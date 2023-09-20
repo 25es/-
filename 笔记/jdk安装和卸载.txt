@@ -1,0 +1,22 @@
+jdk8安装
+1.下载jdk https://www.oracle.com/java/technologies/downloads/#java8-windows 百度网盘：链接：https://pan.baidu.com/s/1F43G56vjd5JtZXxbkQJlIA   提取码：8888
+2.环境变量中新建一个变量JAVA_HOME，变量值为jdk安装目录,
+3.编辑path，添加两个变量%JAVA_HOME%\bin和%JAVA_HOME%\jre\bin，此步目的是在任何地方都能使用java、javac命令
+4.增加一个变量CLASSPATH，值为 .;%JAVA_HOME%\lib;%JAVA_HOME%\lib\tools.jar，注意前面有一个点。此步目的是让jvm能够找到class文件
+jdk卸载
+1.打开控制面板卸载jdk
+2.打开注册表regedit，找到HKEY_LOCAL_MACHINE/SOFTWARE/JavaSoft 
+
+将JavaSoft文件夹及其子目录全部删除。
+3.打开环境变量，将JAVA_HOME和CLASSPATH删除，编辑Path将%JAVA_HOME%\bin和%JAVA_HOME%\jre\bin删除
+4.(重要)将C盘中Windows\System32和Windows\SysWOW64文件夹下的java.exe, javaw.exe 和 javaws.exe文件删掉.
+(安装jdk时默认将这三个文件复制到这两个目录)
+5.打开cmd使用java -version测试
+
+jdk11安装，
+1..官网下载后安装
+2.配置环境变量JAVA_HOME 变量值‪为jdk安装目录
+编辑path增加一个%JAVA_HOME%\bin
+不用配置CLASSPATH了
+3.以管理员身份打开cmd，进入到jdk安装目录，执行bin\jlink.exe --module-path jmods --add-modules java.desktop --output jre命令
+完毕！
