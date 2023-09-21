@@ -167,3 +167,82 @@ git clone 和 git pull用法：
 
 # 5.跨团队协作
 
+# 6. ssh免密登录
+
+# 7.Idea集成git
+
+## 7.1 配置忽略文件
+
+![image-20230920203241786](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920203241786.png)
+
+![image-20230920203306016](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920203306016.png)
+
+![image-20230920203323495](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920203323495.png)
+
+ignore内容
+
+```txt
+
+# Compiled class file
+*.class
+# Log file
+*.log
+# BlueJ files
+*.ctxt
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+# virtual machine crash logs, see 
+http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+.classpath
+.project
+.settings
+target
+.idea
+*.iml
+
+
+```
+
+![image-20230920203620474](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920203620474.png)
+
+## 7.2 初始化本地库
+
+选择被git管理的项目。选择setting中的git。
+
+![image-20230920204631348](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920204631348.png)
+
+设置git路径，选择git.exe
+
+![image-20230920204749452](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920204749452.png)
+
+点击test，出现git版本号即配置成功。
+
+![image-20230920204921546](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920204921546.png)
+
+
+
+创建git本地库
+
+![image-20230920205316569](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920205316569.png)
+
+创建成功后项目所在目录出现.git文件夹，初始化本地库成功。
+
+![image-20230920205603741](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920205603741.png)
+
+![image-20230920205910633](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920205910633.png)
+
+此时全部红色，都在工作区需要添加到暂存区
+
+![image-20230920210017158](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920210017158.png)
+
+点击add添加到暂存区’
+
