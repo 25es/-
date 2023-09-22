@@ -1,3 +1,7 @@
+[TOC]
+
+
+
 # Git
 
 详细笔记：[Git学习笔记【尚硅谷】_尚硅谷git笔记_m0_63077733的博客-CSDN博客](https://blog.csdn.net/m0_63077733/article/details/128773818?spm=1001.2014.3001.5501)
@@ -244,5 +248,257 @@ target
 
 ![image-20230920210017158](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230920210017158.png)
 
-点击add添加到暂存区’
+点击add添加到暂存区’，添加成功后，颜色有变化变绿。
+
+![image-20230921193837486](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921193837486.png)
+
+然后提交到本地库
+
+![image-20230921194010531](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921194010531.png)
+
+提交成功后，文件都会变成正常颜色
+
+![image-20230921194521863](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921194521863.png)
+
+### 7.3 切换版本
+
+对文件进行修改‘
+
+![image-20230921194720436](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921194720436.png)
+
+注意看，修改完文件变成蓝色，也就是说此时文件在暂存区，在我们修改后idea直接帮我们把文件添加到了暂存区，我们直接提交到本地库即可
+
+![image-20230921200732652](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921200732652.png)
+
+点击下方Git中的log查看版本信息
+
+![image-20230921200924207](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921200924207.png)
+
+右键版本切换版本
+
+![image-20230921201039678](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921201039678.png)
+
+
+
+切换成功
+
+![image-20230921201112384](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921201112384.png)
+
+### 7.4 分支
+
+- 创建分支
+
+![image-20230921201442406](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921201442406.png)
+
+创建分支成功后会自动切换到该分支
+
+![image-20230921201545359](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921201545359.png)
+
+- 合并分支（无冲突情况）      对文件修改并提交到本地库
+
+![image-20230921201644043](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921201644043.png)
+
+点击右下角分支切换回master分支
+
+![image-20230921201853972](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921201853972.png)
+
+点击右下角分支并选择合并分支’
+
+![image-20230921202206052](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921202206052.png)
+
+合并成功·，并自动提交本地库
+
+![image-20230921202257870](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921202257870.png)
+
+- 合并分支（有冲突情况）
+
+  在master分支下修改文件并提交到本地库
+
+  ![](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921202855762.png)
+
+切换到newBranch分支并在文件的同一位置进行修改
+
+![](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921203525414.png)
+
+在切换为master分支来合并newBranch分支
+
+此时发生了冲突，需要手动合并冲突‘
+
+![image-20230921203727105](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921203727105.png)
+
+![image-20230921203808800](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921203808800.png)
+
+点击应用，合并冲突成功·，并提交本地库
+
+![image-20230921203842561](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921203842561.png)
+
+### 8.Idea集成github
+
+点击setting中的github
+
+点击加号
+
+![image-20230921204419251](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921204419251.png)
+
+可以选择第二个选项用token登录’
+
+![image-20230921204524574](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921204524574.png)
+
+去github中获取token步骤
+
+- 在github右上角点击头像中的setting选项
+
+  ![image-20230921204833715](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921204833715.png)
+
+选择developer setting
+
+![image-20230921204913506](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921204913506.png)
+
+选择create new token
+
+![image-20230921204952322](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921204952322.png)
+
+将全部权限都打开并点击创建
+
+![image-20230921205219645](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921205219645.png)
+
+生成的token要及时保存
+
+![image-20230921205546037](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921205546037.png)
+
+，复制到idea
+
+![image-20230921205632908](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921205632908.png)
+
+点击添加
+
+![image-20230921205653348](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921205653348.png)
+
+关联github成功
+
+## 8.1 push代码到github
+
+点击git中的push选项
+
+![image-20230921205825742](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921205825742.png)
+
+点击orgin中的自定义remote选项
+
+![image-20230921205910167](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921205910167.png)
+
+把github仓库的http或ssh链接粘贴过来
+
+由于之前已经提交过代码，所以要先删除原来的别名，点击git中的管理别名选项
+
+![image-20230921211340702](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921211340702.png)
+
+把已有别名删除掉
+
+![image-20230921211436026](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921211436026.png)
+
+然后再点击orgin中的自定义remote选项把github仓库的http或ssh链接粘贴过来
+
+![image-20230921211510716](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921211510716.png)
+
+并点击push
+
+![image-20230921211615260](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921211615260.png)
+
+push成功，github已有代码
+
+![image-20230921211707692](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921211707692.png)
+
+## 8.2 clone远程库代码
+
+当刚开始开发时，通常需要clone远程库代码到本地库
+
+选择git中clone选项
+
+
+
+![image-20230921212103041](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921212103041.png)
+
+把远程库http或ssh地址粘贴过来，并点击clone
+
+![image-20230921212252859](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921212252859.png)
+
+![image-20230921212332063](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230921212332063.png)
+
+选择新窗口
+
+使用clone会自动帮我们为远程仓库起了别名默认叫origin，前文有说明，此处不再赘述。
+
+## 8.3 pull代码
+
+当远程库有更新，导致本地库代码与远程库代码不一致时，需要使用pull命令同步一下代码
+
+在github中对文件进行修改
+
+![image-20230922122627074](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922122627074.png)
+
+此时在没有pull远程库情况下在对文件进行修改然后push会报错误，要合并冲突
+
+**![image-20230922122858214](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922122858214.png)**
+
+所以要先pull代码‘
+
+点击git中的pull选项
+
+![image-20230922122950825](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922122950825.png)
+
+由于没pull之前修改过，所以此时pull代码需要合并冲突
+
+![image-20230922123039970](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922123039970.png)
+
+注意！！！！！：
+
+**以后开发在push之前，最好在修改之前（不然可能需要解决冲突），要先pull，保证远程库代码和本地库代码一致**
+
+![image-20230922123324893](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922123324893.png)
+
+## 8.4 把项目分享到github
+
+在idea中可以直接把项目分享到github
+
+所以在**第一次**把项目交给github托管时可以使用分享
+
+![image-20230922123835666](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922123835666.png)
+
+分享成功后会自动创建github远程仓库。这样可以免去创建仓库，以及设置别名，push等操作
+
+仅限第一次托管使用
+
+
+
+# 9. gitee码云
+
+码云基本操作和github一致，具体见详细笔记
+
+## 9.1 Idea集成码云
+
+首先在插件中下载码云插件
+
+![image-20230922124235150](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922124235150.png)
+
+然后再gitee中添加码云账号
+
+![image-20230922124330288](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922124330288.png)
+
+连接成功
+
+![image-20230922125052926](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922125052926.png)
+
+## 9.2 idea连接码云
+
+Idea 连接码云和连接 GitHub 几乎一样，首先在 Idea 里面创建一个工程，初始化 git 工 程，然后将代码添加到暂存区，提交到本地库，这些步骤上面已经讲过，此处不再赘述。
+
+也可以分享项目到gitee
+
+![image-20230922125309886](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922125309886.png)
+
+其他操作基本和github一致’
+
+# 10. gitlab
+
+学写完linux在自学
 
