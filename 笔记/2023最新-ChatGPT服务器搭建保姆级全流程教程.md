@@ -1136,3 +1136,5 @@ docker run --name chatgpt-web -d -p 1002:3002 \
 --env OPENAI_API_BASE_URL=https://api.openai-hk.com  registry.cn-hangzhou.aliyuncs.com/generative/chatgpt-web
 
 若有收获，就点个赞吧
+
+![image-20230922135134833](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230922135134833.png)

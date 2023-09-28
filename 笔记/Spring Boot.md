@@ -926,6 +926,8 @@ public WebMvcAutoConfigurationAdapter(WebProperties webProperties, WebMvcPropert
 
 ![image-20230919155240151](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230919155240151.png)
 
+
+
 ![image-20230919155348355](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230919155348355.png)
 
 也就是说这两行代码为/**请求创建了一个控制器并访问服务器路径为
@@ -1104,4 +1106,1532 @@ Map、Model (map、model里面的数据会被放在request的请求域 request.s
 ssm笔记
 
 ### 参数处理·原理
+
+在得到handler之后，再根据得到的handler匹配一个HandlerAdapter来执行控制器方法
+
+```java
+// Determine handler adapter for the current request.为handler方法匹配一个合适的HandlerAdapter
+				HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+```
+
+进入到 getHandlerAdapter方法内
+
+```java
+protected HandlerAdapter getHandlerAdapter(Object handler) throws ServletException {
+    if (this.handlerAdapters != null) {//如果handlerAdapters中不为空，则执行if内语句
+       for (HandlerAdapter adapter : this.handlerAdapters) {//遍历并取出handlerAdapters中的元素
+          if (adapter.supports(handler)) {//判断如果这个adapter支持handler方法，则返回这个adapter
+             return adapter;
+          }
+       }
+    }
+```
+
+![image-20230923100249218](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923100249218.png)
+
+**这个适配器执行目标方法并确定方法参数的每一个值**，下面是handler方法具体执行过程
+
+```java
+// Actually invoke the handler.//适配器执行handler方法  DispatcherServlet
+				mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+```
+
+```java
+@Override
+	@Nullable//AbstractHandlerMethodAdapter
+	public final ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler)
+			throws Exception {
+
+		return handleInternal(request, response, (HandlerMethod) handler);//handle方法内部又执行了handleInternal方法
+	}
+```
+
+```java
+//RequestMappingHandlerAdapter.java
+protected ModelAndView handleInternal(HttpServletRequest request,
+			HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+
+		ModelAndView mav;
+		checkRequest(request);
+
+		// Execute invokeHandlerMethod in synchronized block if required.
+		if (this.synchronizeOnSession) {
+			HttpSession session = request.getSession(false);
+			if (session != null) {
+				Object mutex = WebUtils.getSessionMutex(session);
+				synchronized (mutex) {
+					mav = invokeHandlerMethod(request, response, handlerMethod);
+				}
+			}
+			else {
+				// No HttpSession available -> no mutex necessary
+				mav = invokeHandlerMethod(request, response, handlerMethod);//真正执行handler方法
+			}
+```
+
+```java
+//RequestMappingHandlerAdapter.java
+protected ModelAndView invokeHandlerMethod(HttpServletRequest request,
+			HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+
+		ServletWebRequest webRequest = new ServletWebRequest(request, response);
+		try {
+			WebDataBinderFactory binderFactory = getDataBinderFactory(handlerMethod);
+			ModelFactory modelFactory = getModelFactory(handlerMethod, binderFactory);
+
+			ServletInvocableHandlerMethod invocableMethod = createInvocableHandlerMethod(handlerMethod);//根据handler创建一个用来调用handler方法的对象
+            if (this.argumentResolvers != null) {
+				invocableMethod.setHandlerMethodArgumentResolvers(this.argumentResolvers);//设置一个参数解析器
+			}
+			if (this.returnValueHandlers != null) {
+				invocableMethod.setHandlerMethodReturnValueHandlers(this.returnValueHandlers);//设置一个返回值解析器
+			}
+            
+            
+            
+            	invocableMethod.invokeAndHandle(webRequest, mavContainer);//执行handler方法
+```
+
+![image-20230923102306405](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923102306405.png)
+
+
+
+
+
+
+
+```java
+//ServletInvocableHandlerMethod	
+public void invokeAndHandle(ServletWebRequest webRequest, ModelAndViewContainer mavContainer,
+			Object... providedArgs) throws Exception {
+
+		Object returnValue = invokeForRequest(webRequest, mavContainer, providedArgs);//执行handler方法，获取一个返回值
+        
+        
+        try {
+			this.returnValueHandlers.handleReturnValue(
+					returnValue, getReturnValueType(returnValue), mavContainer, webRequest);//返回值解析器执行返回值，实现转发
+		}
+```
+
+![image-20230923103122782](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923103122782.png)
+
+```java
+//InvocableHandlerMethod.java
+@Nullable
+	public Object invokeForRequest(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+			Object... providedArgs) throws Exception {
+
+		Object[] args = getMethodArgumentValues(request, mavContainer, providedArgs);//获取请求参数
+		if (logger.isTraceEnabled()) {
+			logger.trace("Arguments: " + Arrays.toString(args));
+		}
+		return doInvoke(args);//执行handler方法
+	}
+```
+
+```java
+//InvocableHandlerMethod.java	
+protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+			Object... providedArgs) throws Exception {
+
+		MethodParameter[] parameters = getMethodParameters();//获取请求参数
+```
+
+![image-20230923111651356](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923111651356.png)
+
+**获取请求参数具体过程，进入到**getMethodArgumentValues方法内
+
+```java
+protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+			Object... providedArgs) throws Exception {
+
+		MethodParameter[] parameters = getMethodParameters();//获取请求参数数组
+		if (ObjectUtils.isEmpty(parameters)) {
+			return EMPTY_ARGS;
+		}
+
+		Object[] args = new Object[parameters.length];//根据parameters数组大小args对象数组
+		for (int i = 0; i < parameters.length; i++) {//遍历parameters数组
+			MethodParameter parameter = parameters[i];//把parameters中的元素都赋值给MethodParameter类型的parameter
+			parameter.initParameterNameDiscovery(this.parameterNameDiscoverer);
+			args[i] = findProvidedArgument(parameter, providedArgs);
+			if (args[i] != null) {
+				continue;
+			}
+			if (!this.resolvers.supportsParameter(parameter)) {//判断参数解析器是否能解析这个参数
+				throw new IllegalStateException(formatArgumentError(parameter, "No suitable resolver"));
+			}
+			try {
+				args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);//重点代码，解析器解析参数然后复制给args中的元素
+			}
+			catch (Exception ex) {
+				// Leave stack trace for later, exception may actually be resolved and handled...
+				if (logger.isDebugEnabled()) {
+					String exMsg = ex.getMessage();
+					if (exMsg != null && !exMsg.contains(parameter.getExecutable().toGenericString())) {
+						logger.debug(formatArgumentError(parameter, exMsg));
+					}
+				}
+				throw ex;
+			}
+		}
+		return args;
+	}
+
+```
+
+参数解析器resolvers中·包含的参数解析器种类
+
+![image-20230924101159496](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924101159496.png)
+
+**具体解析代码过程：**
+
+进入到resolveArgument方法中
+
+```java
+//HandlerMethodArgumentResolverComposite.java
+@Override
+	@Nullable
+	public Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+
+		HandlerMethodArgumentResolver resolver = getArgumentResolver(parameter);//根据参数获取一个合适的参数解析器
+		if (resolver == null) {
+			throw new IllegalArgumentException("Unsupported parameter type [" +
+					parameter.getParameterType().getName() + "]. supportsParameter should be called first.");
+		}
+		return resolver.resolveArgument(parameter, mavContainer, webRequest, binderFactory);//执行具体的解析参数
+	}
+```
+
+
+
+查看获取参数解析器过程，进入到getArgumentResolver方法内
+
+```java
+/**
+ * Find a registered {@link HandlerMethodArgumentResolver} that supports
+ * the given method parameter.
+ */
+@Nullable//HandlerMethodArgumentResolverComposite.java
+private HandlerMethodArgumentResolver getArgumentResolver(MethodParameter parameter) {
+    HandlerMethodArgumentResolver result = this.argumentResolverCache.get(parameter);//查看缓存里是否有能处理该参数的参数解析器，如果有，直接返回该解析器，如果没有，执行下面if内语句
+    if (result == null) {
+       for (HandlerMethodArgumentResolver resolver : this.argumentResolvers) {//遍历并取出argumentResolvers中元素
+          if (resolver.supportsParameter(parameter)) {//判断取出的解析器是否能解析该参数
+             result = resolver;
+             this.argumentResolverCache.put(parameter, result);//把该解析器和参数都放在缓存里
+             break;
+          }
+       }
+    }
+    return result;
+}
+```
+
+![image-20230924104043220](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924104043220.png)
+
+最终发现本次合适的解析器是ServletModelAttributeMethodProcessor.
+
+查看具体的参数解析过程，进入到resolveArgument方法内
+
+```java
+@Override
+	@Nullable//ModelAttributeMethodProcessor.java
+	public final Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+
+		Assert.state(mavContainer != null, "ModelAttributeMethodProcessor requires ModelAndViewContainer");
+		Assert.state(binderFactory != null, "ModelAttributeMethodProcessor requires WebDataBinderFactory");
+
+		String name = ModelFactory.getNameForParameter(parameter);//获取parameter名字，name=pet
+		ModelAttribute ann = parameter.getParameterAnnotation(ModelAttribute.class);//查看参数上有没有标ModelAttribute注解
+		if (ann != null) {
+			mavContainer.setBinding(name, ann.binding());
+		}
+
+		Object attribute = null;
+		BindingResult bindingResult = null;
+
+		if (mavContainer.containsAttribute(name)) {//判断mavContainer中是否包含这个名字的属性
+			attribute = mavContainer.getModel().get(name);
+		}
+		else {
+			// Create attribute instance
+			try {
+				attribute = createAttribute(name, parameter, binderFactory, webRequest);//创建一个属性
+			}
+			catch (BindException ex) {
+				if (isBindExceptionRequired(parameter)) {
+					// No BindingResult parameter -> fail with BindException
+					throw ex;
+				}
+				// Otherwise, expose null/empty value and associated BindingResult
+				if (parameter.getParameterType() == Optional.class) {
+					attribute = Optional.empty();
+				}
+				else {
+					attribute = ex.getTarget();
+				}
+				bindingResult = ex.getBindingResult();
+			}
+		}
+
+		if (bindingResult == null) {
+			// Bean property binding and validation;
+			// skipped in case of binding failure on construction.
+			WebDataBinder binder = binderFactory.createBinder(webRequest, attribute, name);
+			if (binder.getTarget() != null) {
+				if (!mavContainer.isBindingDisabled(name)) {
+					bindRequestParameters(binder, webRequest);
+				}
+				validateIfApplicable(binder, parameter);
+				if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+					throw new BindException(binder.getBindingResult());
+				}
+			}
+			// Value type adaptation, also covering java.util.Optional
+			if (!parameter.getParameterType().isInstance(attribute)) {
+				attribute = binder.convertIfNecessary(binder.getTarget(), parameter.getParameterType(), parameter);
+			}
+			bindingResult = binder.getBindingResult();
+		}
+
+		// Add resolved attribute and BindingResult at the end of the model
+		Map<String, Object> bindingResultModel = bindingResult.getModel();
+		mavContainer.removeAttributes(bindingResultModel);
+		mavContainer.addAllAttributes(bindingResultModel);
+
+		return attribute;
+	}
+
+```
+
+进入 createAttribute内
+
+```java
+@Override//ServletModelAttributeMethodProcessor.java
+protected final Object createAttribute(String attributeName, MethodParameter parameter,
+       WebDataBinderFactory binderFactory, NativeWebRequest request) throws Exception {
+
+    String value = getRequestValueForAttribute(attributeName, request);//查看请求参数中有没有name对应的value
+    if (value != null) {
+       Object attribute = createAttributeFromRequestValue(
+             value, attributeName, parameter, binderFactory, request);
+       if (attribute != null) {
+          return attribute;
+       }
+    }
+
+    return super.createAttribute(attributeName, parameter, binderFactory, request);//执行其父类的createAttribute方法
+}
+```
+
+进入其父类的createAttribute方法
+
+```java
+//ModelAttributeMethodProcessor.java
+protected Object createAttribute(String attributeName, MethodParameter parameter,
+       WebDataBinderFactory binderFactory, NativeWebRequest webRequest) throws Exception {
+
+    MethodParameter nestedParameter = parameter.nestedIfOptional();
+    Class<?> clazz = nestedParameter.getNestedParameterType();//获取嵌套参数类型，得到pet实体类
+
+    Constructor<?> ctor = BeanUtils.getResolvableConstructor(clazz);
+    Object attribute = constructAttribute(ctor, attributeName, parameter, binderFactory, webRequest);//构造实例化类，得到的 attribute
+    if (parameter != nestedParameter) {
+       attribute = Optional.of(attribute);
+    }
+    return attribute;
+}
+```
+
+得到的attribute
+
+![image-20230924111342987](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924111342987.png)
+
+然后执行resolveArgument下面这一段代码
+
+```java
+//resolveArgument
+if (bindingResult == null) {
+       // Bean property binding and validation;
+       // skipped in case of binding failure on construction.
+       WebDataBinder binder = binderFactory.createBinder(webRequest, attribute, name);
+       if (binder.getTarget() != null) {
+          if (!mavContainer.isBindingDisabled(name)) {
+             bindRequestParameters(binder, webRequest);//核心，绑定请求参数，这里面使用了大量的converter
+          }
+          validateIfApplicable(binder, parameter);//验证binder是否适用hander方法参数
+          if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+             throw new BindException(binder.getBindingResult());
+          }
+       }
+       // Value type adaptation, also covering java.util.Optional
+       if (!parameter.getParameterType().isInstance(attribute)) {//判断attribute是不是handler方法参数的实例
+          attribute = binder.convertIfNecessary(binder.getTarget(), parameter.getParameterType(), parameter);//将请求数据转成指定的数据类型。再次封装到JavaBean中
+       }
+       bindingResult = binder.getBindingResult();//获取绑定结果
+    }
+
+    // Add resolved attribute and BindingResult at the end of the model
+    Map<String, Object> bindingResultModel = bindingResult.getModel();//把绑定结果中的model赋值给bindingResultModel 
+    mavContainer.removeAttributes(bindingResultModel);//先移除mavContainer中的bindingResultModel 
+    mavContainer.addAllAttributes(bindingResultModel);//添加bindingResultModel 到mavContainer
+
+    return attribute;
+}
+```
+
+原本的target
+
+![image-20230924120814968](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924120814968.png)
+
+原本的attribute。**注意：attribute是要传值给handler形参的对象也就是最前面的args**
+
+![image-20230924120853280](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924120853280.png)
+
+绑定完请求参数后binder中的taget就有值了，attribute中也有值了.target其实就是attribute，（javabean）
+
+![image-20230924111832880](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924111832880.png)
+
+![image-20230924112957650](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924112957650.png)
+
+**WebDataBinder binder = binderFactory.createBinder(webRequest, attribute, name);**
+
+**WebDataBinder :web数据绑定器，将请求参数的值绑定到指定的JavaBean里面**
+
+**WebDataBinder 利用它里面的 Converters 将请求数据转成指定的数据类型。再次封装到JavaBean中**
+
+bind里有大量的converts
+
+![image-20230925191235579](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230925191235579.png)
+
+进入到bindRequestParameters方法内
+
+```java
+@Override
+	protected void bindRequestParameters(WebDataBinder binder, NativeWebRequest request) {
+		ServletRequest servletRequest = request.getNativeRequest(ServletRequest.class);
+		Assert.state(servletRequest != null, "No ServletRequest");
+		ServletRequestDataBinder servletBinder = (ServletRequestDataBinder) binder;
+		servletBinder.bind(servletRequest);//执行具体的绑定方法
+        
+	}
+```
+
+进入到bind方法内查看具体是如何绑定的
+
+```java
+//ServletRequestDataBinder.java
+public void bind(ServletRequest request) {
+    MutablePropertyValues mpvs = new ServletRequestParameterPropertyValues(request);
+    MultipartRequest multipartRequest = WebUtils.getNativeRequest(request, MultipartRequest.class);
+    if (multipartRequest != null) {//判断是不是上传文件的请求
+       bindMultipart(multipartRequest.getMultiFileMap(), mpvs);
+    }
+    else if (StringUtils.startsWithIgnoreCase(request.getContentType(), MediaType.MULTIPART_FORM_DATA_VALUE)) {//还是判断是不是文件上传
+       HttpServletRequest httpServletRequest = WebUtils.getNativeRequest(request, HttpServletRequest.class);
+       if (httpServletRequest != null && HttpMethod.POST.matches(httpServletRequest.getMethod())) {
+          StandardServletPartUtils.bindParts(httpServletRequest, mpvs, isBindEmptyMultipartFiles());
+       }
+    }
+    addBindValues(mpvs, request);
+    doBind(mpvs);//执行 doBind方法
+}
+```
+
+进入到doBind(mpvs)方法内
+
+```java
+//WebDataBinder.java
+@Override
+protected void doBind(MutablePropertyValues mpvs) {
+    checkFieldDefaults(mpvs);
+    checkFieldMarkers(mpvs);
+    adaptEmptyArrayIndices(mpvs);
+    super.doBind(mpvs);//调用其父类的dobind方法真正执行绑定
+}
+```
+
+进入其父类的dobind方法
+
+```java
+//DataBinder.java
+protected void doBind(MutablePropertyValues mpvs) {
+    checkAllowedFields(mpvs);
+    checkRequiredFields(mpvs);
+    applyPropertyValues(mpvs);//绑定请求参数值给taget对象
+}
+```
+
+进入到applyPropertyValues(mpvs)方法内
+
+```java
+//DataBinder.java
+protected void applyPropertyValues(MutablePropertyValues mpvs) {
+		try {
+			// Bind request parameters onto target object.
+			getPropertyAccessor().setPropertyValues(mpvs, isIgnoreUnknownFields(), isIgnoreInvalidFields());//设置PropertyValues
+		}
+		catch (PropertyBatchUpdateException ex) {
+			// Use bind error processor to create FieldErrors.
+			for (PropertyAccessException pae : ex.getPropertyAccessExceptions()) {
+				getBindingErrorProcessor().processPropertyAccessException(pae, getInternalBindingResult());
+			}
+		}
+	}
+
+```
+
+此时PropertyValues
+
+![image-20230925192721252](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230925192721252.png)
+
+getPropertyAccessor()得到的结果就是pet的wrapper
+
+![image-20230925192929212](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230925192929212.png)
+
+进入到setPropertyValues方法内
+
+```java
+//AbstractPropertyAccessor.java
+try {
+       for (PropertyValue pv : propertyValues) {
+          // setPropertyValue may throw any BeansException, which won't be caught
+          // here, if there is a critical failure such as no matching field.
+          // We can attempt to deal only with less serious exceptions.
+          try {
+             setPropertyValue(pv);//对propertyValues遍历并设置属性值
+          }
+          catch (NotWritablePropertyException ex) {
+             if (!ignoreUnknown) {
+                throw ex;
+             }
+             // Otherwise, just ignore it and continue...
+          }
+          catch (NullValueInNestedPathException ex) {
+             if (!ignoreInvalid) {
+                throw ex;
+             }
+             // Otherwise, just ignore it and continue...
+          }
+          catch (PropertyAccessException ex) {
+             if (propertyAccessExceptions == null) {
+                propertyAccessExceptions = new ArrayList<>();
+             }
+             propertyAccessExceptions.add(ex);
+          }
+       }
+    }
+    finally {
+       if (ignoreUnknown) {
+          this.suppressNotWritablePropertyException = false;
+       }
+    }
+
+    // If we encountered individual exceptions, throw the composite exception.
+    if (propertyAccessExceptions != null) {
+       PropertyAccessException[] paeArray = propertyAccessExceptions.toArray(new PropertyAccessException[0]);
+       throw new PropertyBatchUpdateException(paeArray);
+    }
+}
+```
+
+pv为浏览器传来的参数值。
+
+进入到setPropertyValue(pv)方法内
+
+```java
+//AbstractNestablePropertyAccessor.java
+@Override
+public void setPropertyValue(PropertyValue pv) throws BeansException {
+    PropertyTokenHolder tokens = (PropertyTokenHolder) pv.resolvedTokens;
+    if (tokens == null) {
+       String propertyName = pv.getName();
+       AbstractNestablePropertyAccessor nestedPa;
+       try {
+          nestedPa = getPropertyAccessorForPropertyPath(propertyName);
+       }
+       catch (NotReadablePropertyException ex) {
+          throw new NotWritablePropertyException(getRootClass(), this.nestedPath + propertyName,
+                "Nested property in path '" + propertyName + "' does not exist", ex);
+       }
+       tokens = getPropertyNameTokens(getFinalPath(nestedPa, propertyName));
+       if (nestedPa == this) {
+          pv.getOriginalPropertyValue().resolvedTokens = tokens;
+       }
+       nestedPa.setPropertyValue(tokens, pv);//tokens为javabean的属性名，pv为请求参数的值
+    }
+    else {
+       setPropertyValue(tokens, pv);
+    }
+}
+```
+
+nestedPa为javaBean的wrapper
+
+![image-20230926121123172](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926121123172.png)
+
+进入到.setPropertyValue(tokens, pv)方法内
+
+```java
+//AbstractNestablePropertyAccessor.java
+protected void setPropertyValue(PropertyTokenHolder tokens, PropertyValue pv) throws BeansException {
+		if (tokens.keys != null) {
+			processKeyedProperty(tokens, pv);
+		}
+		else {
+			processLocalProperty(tokens, pv);
+		}
+	}
+```
+
+
+
+进入 processLocalProperty方法内
+
+```java
+//AbstractNestablePropertyAccessor.java
+	private void processLocalProperty(PropertyTokenHolder tokens, PropertyValue pv) {
+		PropertyHandler ph = getLocalPropertyHandler(tokens.actualName);
+		if (ph == null || !ph.isWritable()) {
+			if (pv.isOptional()) {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Ignoring optional value for property '" + tokens.actualName +
+							"' - property not found on bean class [" + getRootClass().getName() + "]");
+				}
+				return;
+			}
+			if (this.suppressNotWritablePropertyException) {
+				// Optimization for common ignoreUnknown=true scenario since the
+				// exception would be caught and swallowed higher up anyway...
+				return;
+			}
+			throw createNotWritablePropertyException(tokens.canonicalName);
+		}
+
+		Object oldValue = null;
+		try {
+			Object originalValue = pv.getValue();
+			Object valueToApply = originalValue;
+			if (!Boolean.FALSE.equals(pv.conversionNecessary)) {
+				if (pv.isConverted()) {
+					valueToApply = pv.getConvertedValue();
+				}
+				else {
+					if (isExtractOldValueForEditor() && ph.isReadable()) {
+						try {
+							oldValue = ph.getValue();
+						}
+						catch (Exception ex) {
+							if (ex instanceof PrivilegedActionException) {
+								ex = ((PrivilegedActionException) ex).getException();
+							}
+							if (logger.isDebugEnabled()) {
+								logger.debug("Could not read previous value of property '" +
+										this.nestedPath + tokens.canonicalName + "'", ex);
+							}
+						}
+					}
+					valueToApply = convertForProperty(
+							tokens.canonicalName, oldValue, originalValue, ph.toTypeDescriptor());//重点，执行转换
+                    
+				}
+				pv.getOriginalPropertyValue().conversionNecessary = (valueToApply != originalValue);//查看是否需要赋值
+			}
+			ph.setValue(valueToApply);//转换完毕后把参数值赋值给javabean的属性
+		}
+		catch (TypeMismatchException ex) {
+			throw ex;
+		}
+		catch (InvocationTargetException ex) {
+			PropertyChangeEvent propertyChangeEvent = new PropertyChangeEvent(
+					getRootInstance(), this.nestedPath + tokens.canonicalName, oldValue, pv.getValue());
+			if (ex.getTargetException() instanceof ClassCastException) {
+				throw new TypeMismatchException(propertyChangeEvent, ph.getPropertyType(), ex.getTargetException());
+			}
+			else {
+				Throwable cause = ex.getTargetException();
+				if (cause instanceof UndeclaredThrowableException) {
+					// May happen e.g. with Groovy-generated methods
+					cause = cause.getCause();
+				}
+				throw new MethodInvocationException(propertyChangeEvent, cause);
+			}
+		}
+		catch (Exception ex) {
+			PropertyChangeEvent pce = new PropertyChangeEvent(
+					getRootInstance(), this.nestedPath + tokens.canonicalName, oldValue, pv.getValue());
+			throw new MethodInvocationException(pce, ex);
+		}
+	}
+```
+
+进入到convertForProperty方法内
+
+```java
+//AbstractNestablePropertyAccessor.java
+@Nullable
+protected Object convertForProperty(
+       String propertyName, @Nullable Object oldValue, @Nullable Object newValue, TypeDescriptor td)
+       throws TypeMismatchException {
+
+    return convertIfNecessary(propertyName, oldValue, newValue, td.getType(), td);//执行转换
+}
+```
+
+进入到convertIfNecessary方法内
+
+```java
+//AbstractNestablePropertyAccessor.java
+@Nullable
+private Object convertIfNecessary(@Nullable String propertyName, @Nullable Object oldValue,
+       @Nullable Object newValue, @Nullable Class<?> requiredType, @Nullable TypeDescriptor td)
+       throws TypeMismatchException {
+
+    Assert.state(this.typeConverterDelegate != null, "No TypeConverterDelegate");
+    try {
+       return this.typeConverterDelegate.convertIfNecessary(propertyName, oldValue, newValue, requiredType, td);.//pet的wrapper执行具体的转换方法
+    }
+    catch (ConverterNotFoundException | IllegalStateException ex) {
+       PropertyChangeEvent pce =
+             new PropertyChangeEvent(getRootInstance(), this.nestedPath + propertyName, oldValue, newValue);
+       throw new ConversionNotSupportedException(pce, requiredType, ex);
+    }
+    catch (ConversionException | IllegalArgumentException ex) {
+       PropertyChangeEvent pce =
+             new PropertyChangeEvent(getRootInstance(), this.nestedPath + propertyName, oldValue, newValue);
+       throw new TypeMismatchException(pce, requiredType, ex);
+    }
+}
+```
+
+进入this.typeConverterDelegate的convertIfNecessary
+
+```java
+//TypeConverterDelegate.java
+@Nullable
+public <T> T convertIfNecessary(@Nullable String propertyName, @Nullable Object oldValue, @Nullable Object newValue,
+       @Nullable Class<T> requiredType, @Nullable TypeDescriptor typeDescriptor) throws IllegalArgumentException {
+
+    // Custom editor for this type?
+    PropertyEditor editor = this.propertyEditorRegistry.findCustomEditor(requiredType, propertyName);
+
+    ConversionFailedException conversionAttemptEx = null;
+
+    // No custom editor but custom ConversionService specified?
+    ConversionService conversionService = this.propertyEditorRegistry.getConversionService();//获得一个转换服务，为GenericConversionService
+    if (editor == null && conversionService != null && newValue != null && typeDescriptor != null) {
+       TypeDescriptor sourceTypeDesc = TypeDescriptor.forObject(newValue);
+       if (conversionService.canConvert(sourceTypeDesc, typeDescriptor)) {//sourceTypeDesc提供的类型，也就是请求中参数类型，typeDescriptor是javabean中属性的类型。判断conversionService是否能把sourceTypeDesc转换成typeDescriptor
+          try {
+             return (T) conversionService.convert(newValue, sourceTypeDesc, typeDescriptor)//真正执行转换
+          }
+          catch (ConversionFailedException ex) {
+             // fallback to default conversion logic below
+             conversionAttemptEx = ex;
+          }
+       }
+    }
+
+   
+```
+
+进入convert方法内
+
+```java
+//GenericConversionService.class
+@Nullable
+public Object convert(@Nullable Object source, @Nullable TypeDescriptor sourceType, TypeDescriptor targetType) {
+    Assert.notNull(targetType, "Target type to convert to cannot be null");
+    if (sourceType == null) {
+        Assert.isTrue(source == null, "Source must be [null] if source type == [null]");
+        return this.handleResult((TypeDescriptor)null, targetType, this.convertNullSource((TypeDescriptor)null, targetType));
+    } else if (source != null && !sourceType.getObjectType().isInstance(source)) {
+        throw new IllegalArgumentException("Source to convert from must be an instance of [" + sourceType + "]; instead it was a [" + source.getClass().getName() + "]");
+    } else {
+        GenericConverter converter = this.getConverter(sourceType, targetType);//得到具体能实现转换转换器。得到的是NO-OP转换器，NOOPConverter@6733
+        if (converter != null) {
+            Object result = ConversionUtils.invokeConverter(converter, source, sourceType, targetType);//执行转换，得到一个结果result
+            return this.handleResult(sourceType, targetType, result);//处理result
+        } else {
+            return this.handleConverterNotFound(source, sourceType, targetType);
+        }
+    }
+}
+```
+
+```java
+//GenericConversionService.class
+@Nullable
+private Object handleResult(@Nullable TypeDescriptor sourceType, TypeDescriptor targetType, @Nullable Object result) {
+    if (result == null) {
+        this.assertNotPrimitiveTargetType(sourceType, targetType);
+    }
+
+    return result;
+}
+```
+
+invokeConverter
+
+```java
+//GenericConversionService.class
+@Nullable
+public static Object invokeConverter(GenericConverter converter, @Nullable Object source, TypeDescriptor sourceType, TypeDescriptor targetType) {
+    try {
+        return converter.convert(source, sourceType, targetType);
+    } catch (ConversionFailedException var5) {
+        throw var5;
+    } catch (Throwable var6) {
+        throw new ConversionFailedException(sourceType, targetType, source, var6);
+    }
+}
+```
+
+**GenericConversionService：在设置每一个值的时候，找它里面的所有converter那个可以将这个数据类型（request带来参数的字符串）转换到指定的类型（JavaBean -- Integer）**
+
+**byte -- > file**
+
+**执行handler方法之前要确定入参args**，**解析的作用就是确定入参attribute也就是args**。
+
+获取请求参数args后执行doinvoke方法
+
+```java
+//InvocableHandlerMethod.java
+protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+			Object... providedArgs) throws Exception {
+    
+    try {
+			if (KotlinDetector.isSuspendingFunction(method)) {
+				return CoroutinesUtils.invokeSuspendingFunction(method, getBean(), args);
+			}
+			return method.invoke(getBean(), args);//执行handler方法
+		}
+```
+
+进入invoke方法内
+
+```java
+//Method.java
+@CallerSensitive
+    public Object invoke(Object obj, Object... args)
+        throws IllegalAccessException, IllegalArgumentException,
+           InvocationTargetException
+    {
+        if (!override) {
+            if (!Reflection.quickCheckMemberAccess(clazz, modifiers)) {
+                Class<?> caller = Reflection.getCallerClass();
+                checkAccess(caller, clazz, obj, modifiers);
+            }
+        }
+        MethodAccessor ma = methodAccessor;             // read volatile
+        if (ma == null) {
+            ma = acquireMethodAccessor();
+        }
+        return ma.invoke(obj, args);//执行handler方法
+    }
+```
+
+![image-20230923110214103](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923110214103.png)
+
+
+
+以下是控制器方法返回值为视图的处理返回值过程
+
+```java
+//ServletInvocableHandlerMethod.java
+try {
+       this.returnValueHandlers.handleReturnValue(
+             returnValue, getReturnValueType(returnValue), mavContainer, webRequest);//执行处理返回值方法
+    }
+    catch (Exception ex) {
+       if (logger.isTraceEnabled()) {
+          logger.trace(formatErrorForReturnValue(returnValue), ex);
+       }
+       throw ex;
+    }
+}
+```
+
+```java
+//HandlerMethodReturnValueHandlerComposite.java
+Override
+	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+
+		HandlerMethodReturnValueHandler handler = selectHandler(returnValue, returnType);//寻找一个处理返回值的handler对象
+    
+    handler.handleReturnValue(returnValue, returnType, mavContainer, webRequest);//执行处理返回值方法
+```
+
+![](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923103612999.png)
+
+```java
+//ViewNameMethodReturnValueHandler.java
+	@Override
+	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+
+		if (returnValue instanceof CharSequence) {
+			String viewName = returnValue.toString();
+			mavContainer.setViewName(viewName);//mavContainer设置viewname值为返回值success
+			if (isRedirectViewName(viewName)) {
+				mavContainer.setRedirectModelScenario(true);
+			}
+		}
+```
+
+```java
+//RequestMappingHandlerAdapter.java
+protected ModelAndView invokeHandlerMethod(HttpServletRequest request,
+			HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+return getModelAndView(mavContainer, modelFactory, webRequest);//然后执行getModelAndView方法获取model中的值
+```
+
+```java
+//RequestMappingHandlerAdapter.java
+@Nullable
+	private ModelAndView getModelAndView(ModelAndViewContainer mavContainer,
+			ModelFactory modelFactory, NativeWebRequest webRequest) throws Exception {
+
+		modelFactory.updateModel(webRequest, mavContainer);
+		if (mavContainer.isRequestHandled()) {
+			return null;
+		}
+		ModelMap model = mavContainer.getModel();//获取model中的值
+		ModelAndView mav = new ModelAndView(mavContainer.getViewName(), model, mavContainer.getStatus());//把mavContainer中的view和model都放在一个mav对象中返回，返回的mav就是最初的mv对象
+		if (!mavContainer.isViewReference()) {
+			mav.setView((View) mavContainer.getView());
+		}
+		if (model instanceof RedirectAttributes) {
+			Map<String, ?> flashAttributes = ((RedirectAttributes) model).getFlashAttributes();
+			HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
+			if (request != null) {
+				RequestContextUtils.getOutputFlashMap(request).putAll(flashAttributes);
+			}
+		}
+		return mav;
+	}
+
+}
+```
+
+### 
+
+以下是方法上使用@ResponseBody标识的处理返回值过程
+
+```java
+@ResponseBody
+@RequestMapping("/cn")
+public User contentNegotiation(){
+    User user = new User();
+    user.setAge(23);
+    user.setGender("男");
+    user.setName("贺博文");
+    return user;
+}
+```
+
+```java
+public void invokeAndHandle(ServletWebRequest webRequest, ModelAndViewContainer mavContainer,
+       Object... providedArgs) throws Exception {
+
+    Object returnValue = invokeForRequest(webRequest, mavContainer, providedArgs);//执行控制器方法得到返回值
+    setResponseStatus(webRequest);
+
+    if (returnValue == null) {
+       if (isRequestNotModified(webRequest) || getResponseStatus() != null || mavContainer.isRequestHandled()) {
+          disableContentCachingIfNecessary(webRequest);
+          mavContainer.setRequestHandled(true);
+          return;
+       }
+    }
+    else if (StringUtils.hasText(getResponseStatusReason())) {
+       mavContainer.setRequestHandled(true);
+       return;
+    }
+
+    mavContainer.setRequestHandled(false);
+    Assert.state(this.returnValueHandlers != null, "No return value handlers");
+    try {
+       this.returnValueHandlers.handleReturnValue(
+             returnValue, getReturnValueType(returnValue), mavContainer, webRequest);//执行处理返回值方法
+    }
+    catch (Exception ex) {
+       if (logger.isTraceEnabled()) {
+          logger.trace(formatErrorForReturnValue(returnValue), ex);
+       }
+       throw ex;
+    }
+}
+```
+
+上面得到的returnValue为
+
+![image-20230926150520642](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926150520642.png)
+
+进入handleReturnValue方法内
+
+```java
+@Override
+public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+       ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+
+    HandlerMethodReturnValueHandler handler = selectHandler(returnValue, returnType);//根据返回值和返回类型来找出一个合适的handler。找出的handler为RequestResponseBodyMethodProcessor@7160
+    if (handler == null) {
+       throw new IllegalArgumentException("Unknown return value type: " + returnType.getParameterType().getName());
+    }
+    handler.handleReturnValue(returnValue, returnType, mavContainer, webRequest);//执行处理返回值方法
+}
+
+@Nullable
+private HandlerMethodReturnValueHandler selectHandler(@Nullable Object value, MethodParameter returnType) {
+    boolean isAsyncValue = isAsyncReturnValue(value, returnType);
+    for (HandlerMethodReturnValueHandler handler : this.returnValueHandlers) {
+       if (isAsyncValue && !(handler instanceof AsyncHandlerMethodReturnValueHandler)) {
+          continue;
+       }
+       if (handler.supportsReturnType(returnType)) {
+          return handler;
+       }
+    }
+    return null;
+}
+```
+
+进入到handleReturnValue(returnValue, returnType, mavContainer, webRequest)方法内
+
+```java
+@Override
+    public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+          ModelAndViewContainer mavContainer, NativeWebRequest webRequest)
+          throws IOException, HttpMediaTypeNotAcceptableException, HttpMessageNotWritableException {
+
+       mavContainer.setRequestHandled(true);
+       ServletServerHttpRequest inputMessage = createInputMessage(webRequest);
+       ServletServerHttpResponse outputMessage = createOutputMessage(webRequest);
+
+       // Try even with null return value. ResponseBodyAdvice could get involved.
+       writeWithMessageConverters(returnValue, returnType, inputMessage, outputMessage);//重点代码。
+    }
+
+}
+```
+
+进入到 writeWithMessageConverters(returnValue, returnType, inputMessage, outputMessage)方法内
+
+```java
+//AbstractMessageConverterMethodProcessor.java
+protected <T> void writeWithMessageConverters(@Nullable T value, MethodParameter returnType,
+       ServletServerHttpRequest inputMessage, ServletServerHttpResponse outputMessage)
+       throws IOException, HttpMediaTypeNotAcceptableException, HttpMessageNotWritableException {
+
+    Object body;
+    Class<?> valueType;
+    Type targetType;
+
+    if (value instanceof CharSequence) {
+       body = value.toString();
+       valueType = String.class;
+       targetType = String.class;
+    }
+    else {
+       body = value;
+       valueType = getReturnValueType(body, returnType);
+       targetType = GenericTypeResolver.resolveType(getGenericType(returnType), returnType.getContainingClass());//getGenericType(returnType)为获取returnType的泛型类型，returnType.getContainingClass()获取包含returnType的类。这行代码作用就是解析并获取目标类型。
+    }
+
+    if (isResourceType(value, returnType)) {
+       outputMessage.getHeaders().set(HttpHeaders.ACCEPT_RANGES, "bytes");
+       if (value != null && inputMessage.getHeaders().getFirst(HttpHeaders.RANGE) != null &&
+             outputMessage.getServletResponse().getStatus() == 200) {
+          Resource resource = (Resource) value;
+          try {
+             List<HttpRange> httpRanges = inputMessage.getHeaders().getRange();
+             outputMessage.getServletResponse().setStatus(HttpStatus.PARTIAL_CONTENT.value());
+             body = HttpRange.toResourceRegions(httpRanges, resource);
+             valueType = body.getClass();
+             targetType = RESOURCE_REGION_LIST_TYPE;
+          }
+          catch (IllegalArgumentException ex) {
+             outputMessage.getHeaders().set(HttpHeaders.CONTENT_RANGE, "bytes */" + resource.contentLength());
+             outputMessage.getServletResponse().setStatus(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE.value());
+          }
+       }
+    }
+
+    MediaType selectedMediaType = null;
+    MediaType contentType = outputMessage.getHeaders().getContentType();
+    boolean isContentTypePreset = contentType != null && contentType.isConcrete();
+    if (isContentTypePreset) {
+       if (logger.isDebugEnabled()) {
+          logger.debug("Found 'Content-Type:" + contentType + "' in response");
+       }
+       selectedMediaType = contentType;
+    }
+    else {
+       HttpServletRequest request = inputMessage.getServletRequest();//得到原生的request请求
+       List<MediaType> acceptableTypes;
+       try {
+          acceptableTypes = getAcceptableMediaTypes(request);.//重点代码，得到浏览器能接受的响应类型信息，涉及到内容协商。
+       }
+       catch (HttpMediaTypeNotAcceptableException ex) {
+          int series = outputMessage.getServletResponse().getStatus() / 100;
+          if (body == null || series == 4 || series == 5) {
+             if (logger.isDebugEnabled()) {
+                logger.debug("Ignoring error response content (if any). " + ex);
+             }
+             return;
+          }
+          throw ex;
+       }
+       List<MediaType> producibleTypes = getProducibleMediaTypes(request, valueType, targetType);
+//得到服务器能生产的类型
+        if (body != null && producibleTypes.isEmpty()) {
+          throw new HttpMessageNotWritableException(
+                "No converter found for return value of type: " + valueType);
+       }
+       List<MediaType> mediaTypesToUse = new ArrayList<>();
+       for (MediaType requestedType : acceptableTypes) {//对浏览器能接受的类型遍历
+          for (MediaType producibleType : producibleTypes) {//对服务器能转换的类型进行遍历
+             if (requestedType.isCompatibleWith(producibleType)) {
+                mediaTypesToUse.add(getMostSpecificMediaType(requestedType, producibleType));
+             }
+          }
+       }//最终选择json作为返回类型
+       if (mediaTypesToUse.isEmpty()) {
+          if (logger.isDebugEnabled()) {
+             logger.debug("No match for " + acceptableTypes + ", supported: " + producibleTypes);
+          }
+          if (body != null) {
+             throw new HttpMediaTypeNotAcceptableException(producibleTypes);
+          }
+          return;
+       }
+
+       MediaType.sortBySpecificityAndQuality(mediaTypesToUse);
+
+       for (MediaType mediaType : mediaTypesToUse) {
+          if (mediaType.isConcrete()) {
+             selectedMediaType = mediaType;
+             break;
+          }
+          else if (mediaType.isPresentIn(ALL_APPLICATION_MEDIA_TYPES)) {
+             selectedMediaType = MediaType.APPLICATION_OCTET_STREAM;
+             break;
+          }
+       }
+
+       if (logger.isDebugEnabled()) {
+          logger.debug("Using '" + selectedMediaType + "', given " +
+                acceptableTypes + " and supported " + producibleTypes);
+       }
+    }
+
+    if (selectedMediaType != null) {
+       selectedMediaType = selectedMediaType.removeQualityValue();
+       for (HttpMessageConverter<?> converter : this.messageConverters) {
+          GenericHttpMessageConverter genericConverter = (converter instanceof GenericHttpMessageConverter ?
+                (GenericHttpMessageConverter<?>) converter : null);
+          if (genericConverter != null ?
+                ((GenericHttpMessageConverter) converter).canWrite(targetType, valueType, selectedMediaType) :
+                converter.canWrite(valueType, selectedMediaType)) {
+             body = getAdvice().beforeBodyWrite(body, returnType, selectedMediaType,
+                   (Class<? extends HttpMessageConverter<?>>) converter.getClass(),
+                   inputMessage, outputMessage);
+             if (body != null) {
+                Object theBody = body;
+                LogFormatUtils.traceDebug(logger, traceOn ->
+                      "Writing [" + LogFormatUtils.formatValue(theBody, !traceOn) + "]");
+                addContentDispositionHeader(inputMessage, outputMessage);
+                if (genericConverter != null) {
+                   genericConverter.write(body, targetType, selectedMediaType, outputMessage);
+                }
+                else {
+                   ((HttpMessageConverter) converter).write(body, selectedMediaType, outputMessage);
+                }
+             }
+             else {
+                if (logger.isDebugEnabled()) {
+                   logger.debug("Nothing to write: null body");
+                }
+             }
+             return;
+          }
+       }
+    }
+
+    if (body != null) {
+       Set<MediaType> producibleMediaTypes =
+             (Set<MediaType>) inputMessage.getServletRequest()
+                   .getAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
+
+       if (isContentTypePreset || !CollectionUtils.isEmpty(producibleMediaTypes)) {
+          throw new HttpMessageNotWritableException(
+                "No converter for [" + valueType + "] with preset Content-Type '" + contentType + "'");
+       }
+       throw new HttpMediaTypeNotAcceptableException(getSupportedMediaTypes(body.getClass()));
+    }
+}
+```
+
+进入到resolveType(getGenericType(returnType), returnType.getContainingClass())方法内
+
+```java
+public static Type resolveType(Type genericType, @Nullable Class<?> contextClass) {
+    if (contextClass != null) {
+        ResolvableType resolvedType;
+        if (genericType instanceof TypeVariable) {
+            resolvedType = resolveVariable((TypeVariable)genericType, ResolvableType.forClass(contextClass));
+            if (resolvedType != ResolvableType.NONE) {
+                Class<?> resolved = resolvedType.resolve();
+                if (resolved != null) {
+                    return resolved;
+                }
+            }
+        } else if (genericType instanceof ParameterizedType) {
+            resolvedType = ResolvableType.forType(genericType);
+            if (resolvedType.hasUnresolvableGenerics()) {
+                ParameterizedType parameterizedType = (ParameterizedType)genericType;
+                Class<?>[] generics = new Class[parameterizedType.getActualTypeArguments().length];
+                Type[] typeArguments = parameterizedType.getActualTypeArguments();
+                ResolvableType contextType = ResolvableType.forClass(contextClass);
+
+                for(int i = 0; i < typeArguments.length; ++i) {
+                    Type typeArgument = typeArguments[i];
+                    if (typeArgument instanceof TypeVariable) {
+                        ResolvableType resolvedTypeArgument = resolveVariable((TypeVariable)typeArgument, contextType);
+                        if (resolvedTypeArgument != ResolvableType.NONE) {
+                            generics[i] = resolvedTypeArgument.resolve();
+                        } else {
+                            generics[i] = ResolvableType.forType(typeArgument).resolve();
+                        }
+                    } else {
+                        generics[i] = ResolvableType.forType(typeArgument).resolve();
+                    }
+                }
+
+                Class<?> rawClass = resolvedType.getRawClass();
+                if (rawClass != null) {
+                    return ResolvableType.forClassWithGenerics(rawClass, generics).getType();
+                }
+            }
+        }
+    }
+
+    return genericType;//由于前面条件都不成立，所以最终得到的目标类型还是传进来genericType
+}
+```
+
+
+
+>
+>
+>TypeVariable是Java中的一个接口，用于表示泛型类型中的类型参数。它是在泛型类、泛型接口或者泛型方法中定义的类型参数的形式化表示。
+>
+>在Java中，当我们定义一个泛型类、泛型接口或者泛型方法时，可以使用TypeVariable来表示其中的类型参数。例如，以下是一个泛型类的示例：
+>
+>```
+>java复制代码public class MyGenericClass<T, U> {
+>    // ...
+>}
+>```
+>
+>在这个示例中，`T`和`U`就是泛型类`MyGenericClass`的类型参数。它们可以被视为TypeVariable的实例。
+>
+>TypeVariable接口提供了一些方法来获取关于类型参数的信息，例如获取类型参数的名称、边界信息等。通过对TypeVariable进行反射操作，我们可以获取有关泛型类型参数的元数据信息。
+>
+>需要注意的是，TypeVariable只是一个类型参数的符号表示，并不包含具体的类型信息。在使用泛型类型时，TypeVariable会被具体的类型实参所替代。
+
+回到 writeWithMessageConverters(returnValue, returnType, inputMessage, outputMessage)方法内
+
+得到浏览器能接受的类型，如下图。
+
+![image-20230926155758230](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926155758230.png)
+
+进入到getProducibleMediaTypes(request, valueType, targetType)方法内
+
+```java
+protected List<MediaType> getProducibleMediaTypes(
+       HttpServletRequest request, Class<?> valueClass, @Nullable Type targetType) {
+
+    Set<MediaType> mediaTypes =
+          (Set<MediaType>) request.getAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
+    if (!CollectionUtils.isEmpty(mediaTypes)) {
+       return new ArrayList<>(mediaTypes);
+    }
+    List<MediaType> result = new ArrayList<>();
+    for (HttpMessageConverter<?> converter : this.messageConverters) {//遍历取出messageConverters中的转换器
+       if (converter instanceof GenericHttpMessageConverter && targetType != null) {//判断转换器是不是常规的·消息转换器。最终发现
+          if (((GenericHttpMessageConverter<?>) converter).canWrite(targetType, valueClass, null))//判断转换器是否支持目标类型。最终都成立的转换器是MappingJackson2HttpMessageConverter {
+             result.addAll(converter.getSupportedMediaTypes(valueClass));
+          }
+       }
+       else if (converter.canWrite(valueClass, null)) {
+          result.addAll(converter.getSupportedMediaTypes(valueClass));
+       }
+    }
+    return (result.isEmpty() ? Collections.singletonList(MediaType.ALL) : result);
+}
+```
+
+
+
+  ### springmvc支持的返回值
+
+```java
+ModelAndView
+Model
+View
+ResponseEntity 
+ResponseBodyEmitter
+StreamingResponseBody
+HttpEntity
+HttpHeaders
+Callable
+DeferredResult
+ListenableFuture
+CompletionStage
+WebAsyncTask
+有 @ModelAttribute 且为对象类型的
+@ResponseBody 注解 ---> RequestResponseBodyMethodProcessor；
+```
+
+
+
+**HttpMessageConverter的前两个方法: 看是否支持将 此 Class类型的对象，转为MediaType类型的数据。**
+
+**例子：Person对象转为JSON。或者 JSON转为Person**
+
+![image-20230926164234204](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926164234204.png)
+
+messageConverters消息转换器包含
+
+![image-20230926160733431](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926160733431.png)
+
+转换器作用转换媒体类型。不同的转换器支持的媒体类型不同，能转成的媒体类型也不同。
+
+0 - 只支持Byte类型的
+
+1 - String
+
+2 - String
+
+3 - Resource
+
+4 - ResourceRegion
+
+5 - DOMSource.**class \** SAXSource.**class**) \ StAXSource.**class \**StreamSource.**class \**Source.**class**
+
+**6 -** MultiValueMap
+
+7 - **true** 
+
+**8 - true**
+
+**9 - 支持注解方式xml处理的。**
+
+**MappingJackson2HttpMessageConverter 能把目标类转换成json响应到浏览器。**
+
+![image-20230926162136416](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926162136416.png)
+
+回到writeWithMessageConverters(returnValue, returnType, inputMessage, outputMessage)方法内
+
+### 内容协商
+
+**内容协商（Content Negotiation）是指在客户端和服务器之间进行交流和协商，以确定最适合的响应内容格式。**它允许客户端和服务器通过协商来选择合适的表示形式（如MIME类型、语言、字符集等）来传输和处理数据。
+
+**根据客户端接收能力不同，返回不同媒体类型的数据。**
+
+客户端请求头accept为客户端能接受的响应的媒体类型
+
+![image-20230926182855245](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926182855245.png)
+
+例如：application/xml;q=0.9。代表浏览器能接受xml数据，q代表权重，权重越大代表优先级越高。
+
+#### 在accept为application/xml时查看内容协商过程（内容协商原理）
+
+- 判断当前响应头中是否已经有确定的媒体类型。MediaType
+
+- 获取客户端能接受的媒体类型**（获取客户端Accept请求头字段）**
+
+  ```java
+  private List<MediaType> getAcceptableMediaTypes(HttpServletRequest request)
+         throws HttpMediaTypeNotAcceptableException {
+  
+      return this.contentNegotiationManager.resolveMediaTypes(new ServletWebRequest(request));
+  }
+  ```
+
+  - - **contentNegotiationManager 内容协商管理器 默认使用基于请求头的策略**
+
+      ```java
+      @Override
+      public List<MediaType> resolveMediaTypes(NativeWebRequest request) throws HttpMediaTypeNotAcceptableException {
+          for (ContentNegotiationStrategy strategy : this.strategies) {
+             List<MediaType> mediaTypes = strategy.resolveMediaTypes(request);
+             if (mediaTypes.equals(MEDIA_TYPE_ALL_LIST)) {
+                continue;
+             }
+             return mediaTypes;
+          }
+          return MEDIA_TYPE_ALL_LIST;
+      }
+      ```
+
+![image-20230927155203657](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927155203657.png)
+
+- - **HeaderContentNegotiationStrategy  确定客户端可以接收的内容类型** 
+
+```java
+@Override
+public List<MediaType> resolveMediaTypes(NativeWebRequest request)
+       throws HttpMediaTypeNotAcceptableException {
+
+    String[] headerValueArray = request.getHeaderValues(HttpHeaders.ACCEPT);
+    if (headerValueArray == null) {
+       return MEDIA_TYPE_ALL_LIST;
+    }
+
+    List<String> headerValues = Arrays.asList(headerValueArray);
+    try {
+       List<MediaType> mediaTypes = MediaType.parseMediaTypes(headerValues);
+       MediaType.sortBySpecificityAndQuality(mediaTypes);
+       return !CollectionUtils.isEmpty(mediaTypes) ? mediaTypes : MEDIA_TYPE_ALL_LIST;
+    }
+    catch (InvalidMediaTypeException ex) {
+       throw new HttpMediaTypeNotAcceptableException(
+             "Could not parse 'Accept' header " + headerValues + ": " + ex.getMessage());
+    }
+}
+```
+
+- 得到服务器能产出的媒体类型
+
+  ```java
+  List<MediaType> producibleTypes = getProducibleMediaTypes(request, valueType, targetType);
+  ```
+
+  -   遍历所有的**MessageConverter**，看看谁支持操作这个返回值person
+
+    ```java
+    - for (HttpMessageConverter<?> converter : this.messageConverters) {
+          if (converter instanceof GenericHttpMessageConverter && targetType != null) {
+             if (((GenericHttpMessageConverter<?>) converter).canWrite(targetType, valueClass, null)) {
+                result.addAll(converter.getSupportedMediaTypes(valueClass));
+             }
+          }
+          else if (converter.canWrite(valueClass, null)) {
+             result.addAll(converter.getSupportedMediaTypes(valueClass));
+          }
+      }
+    - 
+    ```
+
+    
+
+  - 找到支持操作对象的converter后，把找到的所有converter支持的媒体类型统计出来加入到result中
+
+  - 客户端需要【application/xml】。服务端能力【10种、json、xml】
+
+    ![image-20230927160716096](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927160716096.png)
+
+    
+
+- 进行内容协商的最佳匹配，确定最佳匹配媒体类型
+
+  ```java
+  List<MediaType> mediaTypesToUse = new ArrayList<>();
+  for (MediaType requestedType : acceptableTypes) {
+      for (MediaType producibleType : producibleTypes) {
+         if (requestedType.isCompatibleWith(producibleType)) {
+            mediaTypesToUse.add(getMostSpecificMediaType(requestedType, producibleType));
+         }
+      }
+  }
+  ```
+
+- ​        
+  -   最终找到最佳匹配的有四种，两两重复
+
+ ![image-20230927161141847](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927161141847.png)
+
+- 遍历mediaTypesToUse，找到一个适合的媒体类型，直接break
+
+  ```java
+  for (MediaType mediaType : mediaTypesToUse) {
+      if (mediaType.isConcrete()) {
+         selectedMediaType = mediaType;
+         break;
+      }
+  ```
+
+![image-20230927161515517](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927161515517.png)
+
+- 又遍历循环MessageConverter，此次遍历目的就是用 支持 将对象转为 最佳匹配媒体类型 的converter。**调用它进行转化** 
+
+```java
+if (selectedMediaType != null) {
+    selectedMediaType = selectedMediaType.removeQualityValue();
+    for (HttpMessageConverter<?> converter : this.messageConverters) {
+       GenericHttpMessageConverter genericConverter = (converter instanceof GenericHttpMessageConverter ?
+             (GenericHttpMessageConverter<?>) converter : null);
+       if (genericConverter != null ?
+             ((GenericHttpMessageConverter) converter).canWrite(targetType, valueType, selectedMediaType) :
+             converter.canWrite(valueType, selectedMediaType)) {
+          body = getAdvice().beforeBodyWrite(body, returnType, selectedMediaType,
+                (Class<? extends HttpMessageConverter<?>>) converter.getClass(),
+                inputMessage, outputMessage);
+          if (body != null) {
+             Object theBody = body;
+             LogFormatUtils.traceDebug(logger, traceOn ->
+                   "Writing [" + LogFormatUtils.formatValue(theBody, !traceOn) + "]");
+             addContentDispositionHeader(inputMessage, outputMessage);
+             if (genericConverter != null) {
+                genericConverter.write(body, targetType, selectedMediaType, outputMessage);
+             }
+             else {
+                ((HttpMessageConverter) converter).write(body, selectedMediaType, outputMessage);
+             }
+          }
+          else {
+             if (logger.isDebugEnabled()) {
+                logger.debug("Nothing to write: null body");
+             }
+          }
+          return;
+       }
+    }
+}
+```
+
+#### 开启浏览器参数方式内容协商功能
+
+为了方便内容协商，开启基于请求参数的内容协商功能
+
+```yaml
+spring:
+  mvc:
+    contentnegotiation:
+      favor-parameter: true  #开启请求参数内容协商模式
+```
+
+发请求： http://localhost:8080/test/person?format=json
+
+[http://localhost:8080/test/person?format=](http://localhost:8080/test/person?format=json)xml
+
+原理：
+
+- 在开启基于请求参数的策略后，contentNegotiationManager中就有parameter策略，和Header两种策略，且parameter策略优先
+
+![image-20230927165319509](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927165319509.png)
+
+
+
+- parameter策略解析媒体类型是通过获取请求头中的key值来确定浏览器接受的媒体类型，这个key就是format。
+
+![image-20230927170001608](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927170001608.png)
 
