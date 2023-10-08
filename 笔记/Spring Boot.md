@@ -1105,7 +1105,7 @@ Map、Model (map、model里面的数据会被放在request的请求域 request.s
 
 ssm笔记
 
-### 参数处理·原理
+### handler方法具体执行流程以及参数处理·原理
 
 在得到handler之后，再根据得到的handler匹配一个HandlerAdapter来执行控制器方法
 
@@ -1222,7 +1222,7 @@ public void invokeAndHandle(ServletWebRequest webRequest, ModelAndViewContainer 
 	public Object invokeForRequest(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
 			Object... providedArgs) throws Exception {
 
-		Object[] args = getMethodArgumentValues(request, mavContainer, providedArgs);//获取请求参数
+		Object[] args = getMethodArgumentValues(request, mavContainer, providedArgs);//获取入参args
 		if (logger.isTraceEnabled()) {
 			logger.trace("Arguments: " + Arrays.toString(args));
 		}
@@ -1240,13 +1240,13 @@ protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable M
 
 ![image-20230923111651356](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923111651356.png)
 
-**获取请求参数具体过程，进入到**getMethodArgumentValues方法内
+**获取入参具体过程，进入到**getMethodArgumentValues方法内
 
 ```java
 protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
 			Object... providedArgs) throws Exception {
 
-		MethodParameter[] parameters = getMethodParameters();//获取请求参数数组
+		MethodParameter[] parameters = getMethodParameters();//获取方法形参数组
 		if (ObjectUtils.isEmpty(parameters)) {
 			return EMPTY_ARGS;
 		}
@@ -1263,7 +1263,7 @@ protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable M
 				throw new IllegalStateException(formatArgumentError(parameter, "No suitable resolver"));
 			}
 			try {
-				args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);//重点代码，解析器解析参数然后复制给args中的元素
+				args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);//重点代码，解析器解析参数然后赋值给args中的元素，args是入参。
 			}
 			catch (Exception ex) {
 				// Leave stack trace for later, exception may actually be resolved and handled...
@@ -1307,7 +1307,7 @@ protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable M
 
 
 
-查看获取参数解析器过程，进入到getArgumentResolver方法内
+查看获取参数解析器过程，参数解析过程就是确定入参的过程。进入到getArgumentResolver方法内。过程：遍历所有的参数解析器，看看那个参数解析器支持这个参数，然后把该参数解析器放到缓存里。
 
 ```java
 /**
@@ -1488,7 +1488,7 @@ if (bindingResult == null) {
 
 ![image-20230924120814968](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924120814968.png)
 
-原本的attribute。**注意：attribute是要传值给handler形参的对象也就是最前面的args**
+原本的attribute。**注意：attribute是要传值给handler形参的对象也就是最前面的args就是入参**
 
 ![image-20230924120853280](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230924120853280.png)
 
@@ -1603,7 +1603,7 @@ try {
           // here, if there is a critical failure such as no matching field.
           // We can attempt to deal only with less serious exceptions.
           try {
-             setPropertyValue(pv);//对propertyValues遍历并设置属性值
+             setPropertyValue(pv);//对propertyValues遍历并设置属性值，这个propertyValues实际是浏览器的请求参数值
           }
           catch (NotWritablePropertyException ex) {
              if (!ignoreUnknown) {
@@ -1825,7 +1825,7 @@ public <T> T convertIfNecessary(@Nullable String propertyName, @Nullable Object 
     ConversionService conversionService = this.propertyEditorRegistry.getConversionService();//获得一个转换服务，为GenericConversionService
     if (editor == null && conversionService != null && newValue != null && typeDescriptor != null) {
        TypeDescriptor sourceTypeDesc = TypeDescriptor.forObject(newValue);
-       if (conversionService.canConvert(sourceTypeDesc, typeDescriptor)) {//sourceTypeDesc提供的类型，也就是请求中参数类型，typeDescriptor是javabean中属性的类型。判断conversionService是否能把sourceTypeDesc转换成typeDescriptor
+       if (conversionService.canConvert(sourceTypeDesc, typeDescriptor)) {//sourceTypeDesc是提供的类型，也就是请求中参数类型，typeDescriptor是javabean中属性的类型。判断conversionService是否能把sourceTypeDesc转换成typeDescriptor
           try {
              return (T) conversionService.convert(newValue, sourceTypeDesc, typeDescriptor)//真正执行转换
           }
@@ -1891,7 +1891,7 @@ public static Object invokeConverter(GenericConverter converter, @Nullable Objec
 }
 ```
 
-**GenericConversionService：在设置每一个值的时候，找它里面的所有converter那个可以将这个数据类型（request带来参数的字符串）转换到指定的类型（JavaBean -- Integer）**
+**GenericConversionService：在设置每一个值的时候，找它里面的所有converter那个可以将这个数据类型（request带来参数的字符串）转换到指定的类型（JavaBean -- Integer），由找到的converter实现转换**
 
 **byte -- > file**
 
@@ -1939,87 +1939,7 @@ protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable M
 
 
 
-以下是控制器方法返回值为视图的处理返回值过程
 
-```java
-//ServletInvocableHandlerMethod.java
-try {
-       this.returnValueHandlers.handleReturnValue(
-             returnValue, getReturnValueType(returnValue), mavContainer, webRequest);//执行处理返回值方法
-    }
-    catch (Exception ex) {
-       if (logger.isTraceEnabled()) {
-          logger.trace(formatErrorForReturnValue(returnValue), ex);
-       }
-       throw ex;
-    }
-}
-```
-
-```java
-//HandlerMethodReturnValueHandlerComposite.java
-Override
-	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
-			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
-
-		HandlerMethodReturnValueHandler handler = selectHandler(returnValue, returnType);//寻找一个处理返回值的handler对象
-    
-    handler.handleReturnValue(returnValue, returnType, mavContainer, webRequest);//执行处理返回值方法
-```
-
-![](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923103612999.png)
-
-```java
-//ViewNameMethodReturnValueHandler.java
-	@Override
-	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
-			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
-
-		if (returnValue instanceof CharSequence) {
-			String viewName = returnValue.toString();
-			mavContainer.setViewName(viewName);//mavContainer设置viewname值为返回值success
-			if (isRedirectViewName(viewName)) {
-				mavContainer.setRedirectModelScenario(true);
-			}
-		}
-```
-
-```java
-//RequestMappingHandlerAdapter.java
-protected ModelAndView invokeHandlerMethod(HttpServletRequest request,
-			HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
-return getModelAndView(mavContainer, modelFactory, webRequest);//然后执行getModelAndView方法获取model中的值
-```
-
-```java
-//RequestMappingHandlerAdapter.java
-@Nullable
-	private ModelAndView getModelAndView(ModelAndViewContainer mavContainer,
-			ModelFactory modelFactory, NativeWebRequest webRequest) throws Exception {
-
-		modelFactory.updateModel(webRequest, mavContainer);
-		if (mavContainer.isRequestHandled()) {
-			return null;
-		}
-		ModelMap model = mavContainer.getModel();//获取model中的值
-		ModelAndView mav = new ModelAndView(mavContainer.getViewName(), model, mavContainer.getStatus());//把mavContainer中的view和model都放在一个mav对象中返回，返回的mav就是最初的mv对象
-		if (!mavContainer.isViewReference()) {
-			mav.setView((View) mavContainer.getView());
-		}
-		if (model instanceof RedirectAttributes) {
-			Map<String, ?> flashAttributes = ((RedirectAttributes) model).getFlashAttributes();
-			HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
-			if (request != null) {
-				RequestContextUtils.getOutputFlashMap(request).putAll(flashAttributes);
-			}
-		}
-		return mav;
-	}
-
-}
-```
-
-### 
 
 以下是方法上使用@ResponseBody标识的处理返回值过程
 
@@ -2366,12 +2286,12 @@ protected List<MediaType> getProducibleMediaTypes(
     List<MediaType> result = new ArrayList<>();
     for (HttpMessageConverter<?> converter : this.messageConverters) {//遍历取出messageConverters中的转换器
        if (converter instanceof GenericHttpMessageConverter && targetType != null) {//判断转换器是不是常规的·消息转换器。最终发现
-          if (((GenericHttpMessageConverter<?>) converter).canWrite(targetType, valueClass, null))//判断转换器是否支持目标类型。最终都成立的转换器是MappingJackson2HttpMessageConverter {
+          if (((GenericHttpMessageConverter<?>) converter).canWrite(targetType, valueClass, null))//判断转换器是否能否写该目标类型。最终都成立的转换器是MappingJackson2HttpMessageConverter {
              result.addAll(converter.getSupportedMediaTypes(valueClass));
           }
        }
        else if (converter.canWrite(valueClass, null)) {
-          result.addAll(converter.getSupportedMediaTypes(valueClass));
+          result.addAll(converter.getSupportedMediaTypes(valueClass));//得到转换器支持的媒体类型并加到result
        }
     }
     return (result.isEmpty() ? Collections.singletonList(MediaType.ALL) : result);
@@ -2412,7 +2332,7 @@ messageConverters消息转换器包含
 
 ![image-20230926160733431](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230926160733431.png)
 
-转换器作用转换媒体类型。不同的转换器支持的媒体类型不同，能转成的媒体类型也不同。
+转换器作用转换媒体类型。不同的转换器支持读写的媒体类型不同，能转成的媒体类型也不同。
 
 0 - 只支持Byte类型的
 
@@ -2515,7 +2435,7 @@ public List<MediaType> resolveMediaTypes(NativeWebRequest request)
   List<MediaType> producibleTypes = getProducibleMediaTypes(request, valueType, targetType);
   ```
 
-  -   遍历所有的**MessageConverter**，看看谁支持操作这个返回值person
+  -   遍历所有的**MessageConverter**，看看谁支持写这个返回值person
 
     ```java
     - for (HttpMessageConverter<?> converter : this.messageConverters) {
@@ -2571,7 +2491,7 @@ public List<MediaType> resolveMediaTypes(NativeWebRequest request)
 
 ![image-20230927161515517](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927161515517.png)
 
-- 又遍历循环MessageConverter，此次遍历目的就是用 支持 将对象转为 最佳匹配媒体类型 的converter。**调用它进行转化** 
+- 又遍历循环MessageConverter，此次遍历目的就是用 支持 将对象转为 最佳匹配媒体类型 的converter。**调用它进行转化** 并写出去
 
 ```java
 if (selectedMediaType != null) {
@@ -2594,7 +2514,7 @@ if (selectedMediaType != null) {
                 genericConverter.write(body, targetType, selectedMediaType, outputMessage);
              }
              else {
-                ((HttpMessageConverter) converter).write(body, selectedMediaType, outputMessage);
+                ((HttpMessageConverter) converter).write(body, selectedMediaType, outputMessage);//写出去
              }
           }
           else {
@@ -2610,7 +2530,7 @@ if (selectedMediaType != null) {
 
 #### 开启浏览器参数方式内容协商功能
 
-为了方便内容协商，开启基于请求参数的内容协商功能
+为了方便内容协商，当浏览器想要某个精确的响应数据类型时就要开启基于请求参数的内容协商功能
 
 ```yaml
 spring:
@@ -2634,4 +2554,1062 @@ spring:
 - parameter策略解析媒体类型是通过获取请求头中的key值来确定浏览器接受的媒体类型，这个key就是format。
 
 ![image-20230927170001608](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230927170001608.png)
+
+
+
+## 5.视图解析原理
+
+以下是控制器方法返回值为视图的处理返回值过程
+
+```java
+//ServletInvocableHandlerMethod.java
+try {
+       this.returnValueHandlers.handleReturnValue(
+             returnValue, getReturnValueType(returnValue), mavContainer, webRequest);//执行处理返回值方法
+    }
+    catch (Exception ex) {
+       if (logger.isTraceEnabled()) {
+          logger.trace(formatErrorForReturnValue(returnValue), ex);
+       }
+       throw ex;
+    }
+}
+```
+
+```java
+//HandlerMethodReturnValueHandlerComposite.java
+Override
+	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+
+		HandlerMethodReturnValueHandler handler = selectHandler(returnValue, returnType);//寻找一个处理返回值的handler方法
+    
+    handler.handleReturnValue(returnValue, returnType, mavContainer, webRequest);//执行处理返回值方法
+```
+
+![](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20230923103612999.png)
+
+```java
+//ViewNameMethodReturnValueHandler.java
+	@Override
+	public void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception {
+
+		if (returnValue instanceof CharSequence) {
+			String viewName = returnValue.toString();
+			mavContainer.setViewName(viewName);//mavContainer设置viewname值为返回值success
+			if (isRedirectViewName(viewName)) {
+				mavContainer.setRedirectModelScenario(true);
+			}
+		}
+```
+
+```java
+//RequestMappingHandlerAdapter.java
+protected ModelAndView invokeHandlerMethod(HttpServletRequest request,
+			HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+return getModelAndView(mavContainer, modelFactory, webRequest);//然后执行getModelAndView方法获取model中的值
+```
+
+```java
+//RequestMappingHandlerAdapter.java
+@Nullable
+	private ModelAndView getModelAndView(ModelAndViewContainer mavContainer,
+			ModelFactory modelFactory, NativeWebRequest webRequest) throws Exception {
+
+		modelFactory.updateModel(webRequest, mavContainer);
+		if (mavContainer.isRequestHandled()) {
+			return null;
+		}
+		ModelMap model = mavContainer.getModel();//获取model中的值
+		ModelAndView mav = new ModelAndView(mavContainer.getViewName(), model, mavContainer.getStatus());//把mavContainer中的view和model都放在一个mav对象中返回，返回的mav就是最初的mv对象
+		if (!mavContainer.isViewReference()) {
+			mav.setView((View) mavContainer.getView());
+		}
+		if (model instanceof RedirectAttributes) {
+			Map<String, ?> flashAttributes = ((RedirectAttributes) model).getFlashAttributes();
+			HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
+			if (request != null) {
+				RequestContextUtils.getOutputFlashMap(request).putAll(flashAttributes);
+			}
+		}
+		return mav;
+	}
+
+}
+```
+
+**注意：当控制器方法参数列表中有自定义的类型参数时，最终会放到mavcontainer默认的model中**
+
+![image-20231003103704940](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231003103704940.png)
+
+### 5.1执行处理派发结果方法
+
+```java
+//DisPatcherServlet.java
+processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+```
+
+  查看具体是如何处理派发结果的
+
+#### 5.1.1 首先执行render渲染方法，
+
+```java
+private void processDispatchResult(HttpServletRequest request, HttpServletResponse response,
+       @Nullable HandlerExecutionChain mappedHandler, @Nullable ModelAndView mv,
+       @Nullable Exception exception) throws Exception {
+
+    boolean errorView = false;
+
+    if (exception != null) {
+       if (exception instanceof ModelAndViewDefiningException) {
+          logger.debug("ModelAndViewDefiningException encountered", exception);
+          mv = ((ModelAndViewDefiningException) exception).getModelAndView();
+       }
+       else {
+          Object handler = (mappedHandler != null ? mappedHandler.getHandler() : null);
+          mv = processHandlerException(request, response, handler, exception);
+          errorView = (mv != null);
+       }
+    }
+
+    // Did the handler return a view to render?
+    if (mv != null && !mv.wasCleared()) {
+       render(mv, request, response);//执行渲染方法
+       if (errorView) {
+          WebUtils.clearErrorRequestAttributes(request);
+       }
+    }
+```
+
+进入到render方法内查看具体如何渲染
+
+- ##### 首先解析view名字得到view对象
+
+```java
+protected void render(ModelAndView mv, HttpServletRequest request, HttpServletResponse response) throws Exception {
+    // Determine locale for request and apply it to the response.
+    Locale locale =
+          (this.localeResolver != null ? this.localeResolver.resolveLocale(request) : request.getLocale());
+    response.setLocale(locale);
+
+    View view;
+    String viewName = mv.getViewName();
+    if (viewName != null) {
+       // We need to resolve the view name.
+       view = resolveViewName(viewName, mv.getModelInternal(), locale, request);//解析view名字得到view对象
+       if (view == null) {
+          throw new ServletException("Could not resolve view with name '" + mv.getViewName() +
+                "' in servlet with name '" + getServletName() + "'");
+       }
+    }
+```
+
+进入到resolveViewName中，查看具体如何得到view对象          
+
+1.这个方法通过遍历viewResolvers得到一个合适的视图解析器
+
+viewResolvers包括：
+
+![image-20231003105944112](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231003105944112.png)
+
+
+
+```java
+@Nullable
+protected View resolveViewName(String viewName, @Nullable Map<String, Object> model,
+       Locale locale, HttpServletRequest request) throws Exception {
+
+    if (this.viewResolvers != null) {
+       for (ViewResolver viewResolver : this.viewResolvers) {
+          View view = viewResolver.resolveViewName(viewName, locale);
+          if (view != null) {
+             return view;
+          }
+       }
+    }
+    return null;
+}
+```
+
+2.然后使用得到的视图解析器调用它的resolveViewName方法
+
+得到的视图解析器是内容协商视图解析器
+
+![image-20231003110758948](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231003110758948.png)
+
+进入到内容协商视图解析器的解析方法内**查看视图解析器如何解析。**
+
+2.1 首先获取候选的视图
+
+```java
+@Override
+@Nullable
+public View resolveViewName(String viewName, Locale locale) throws Exception {
+    RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+    Assert.state(attrs instanceof ServletRequestAttributes, "No current ServletRequestAttributes");
+    List<MediaType> requestedMediaTypes = getMediaTypes(((ServletRequestAttributes) attrs).getRequest());
+    if (requestedMediaTypes != null) {
+       List<View> candidateViews = getCandidateViews(viewName, locale, requestedMediaTypes);//获取候选的视图
+       View bestView = getBestView(candidateViews, requestedMediaTypes, attrs);
+       if (bestView != null) {
+          return bestView;
+       }
+    }
+
+    String mediaTypeInfo = logger.isDebugEnabled() && requestedMediaTypes != null ?
+          " given " + requestedMediaTypes.toString() : "";
+
+    if (this.useNotAcceptableStatusCode) {
+       if (logger.isDebugEnabled()) {
+          logger.debug("Using 406 NOT_ACCEPTABLE" + mediaTypeInfo);
+       }
+       return NOT_ACCEPTABLE_VIEW;
+    }
+    else {
+       logger.debug("View remains unresolved" + mediaTypeInfo);
+       return null;
+    }
+}
+```
+
+进入到getCandidateViews中查看如何获取候选的视图
+
+2.1.1
+
+-   遍历viewresolves查找合适的合适的解析器解析
+
+这个viewresolves就是前面那个内容协商视图解析器，这个解析器中又包括以下这几种视图解析器
+
+![image-20231003111607280](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231003111607280.png)
+
+- 解析出的view如果不为空则添加到候选视图中。
+- 遍历并取出requestedMediaTypes
+
+```java
+private List<View> getCandidateViews(String viewName, Locale locale, List<MediaType> requestedMediaTypes)
+       throws Exception {
+
+    List<View> candidateViews = new ArrayList<>();
+    if (this.= null) {
+       Assert.state(this.contentNegotiationManager != null, "No ContentNegotiationManager set");
+       for (ViewResolver viewResolver : this.viewResolvers) {
+          View view = viewResolver.resolveViewName(viewName, locale);
+          if (view != null) {
+             candidateViews.add(view);
+          }
+          for (MediaType requestedMediaType : requestedMediaTypes) {//遍历并取出requestedMediaTypes元素
+             List<String> extensions = this.contentNegotiationManager.resolveFileExtensions(requestedMediaType);//获取遍历出元素的扩展名
+             for (String extension : extensions) {
+                String viewNameWithExtension = viewName + '.' + extension;
+                view = viewResolver.resolveViewName(viewNameWithExtension, locale);
+                if (view != null) {
+                   candidateViews.add(view);
+                }
+             }
+          }
+       }
+    }
+    if (!CollectionUtils.isEmpty(this.defaultViews)) {
+       candidateViews.addAll(this.defaultViews);
+    }
+    return candidateViews;
+}
+```
+
+获取到的候选视图为
+
+![image-20231003174015548](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231003174015548.png)
+
+2.2 获得最好的视图
+
+```java
+ View bestView = getBestView(candidateViews, requestedMediaTypes, attrs);
+```
+
+进入getBestView方法内查看getBestView方法如何获取最佳视图
+
+2.2.1 
+
+- 首先遍历候选视图，判断是不是SmartView，如果是在判断是不是重定向视图，如果是则返回这个视图。
+- 遍历requestedMediaTypes和候选视图，首先判断候选视图内容类型是否不为空，如果不为空，在判断requestedMediaTypes和这个值兼不兼容，如果兼容则返回这个候选视图。
+
+```java
+@Nullable
+private View getBestView(List<View> candidateViews, List<MediaType> requestedMediaTypes, RequestAttributes attrs) {
+    for (View candidateView : candidateViews) {
+       if (candidateView instanceof SmartView) {
+          SmartView smartView = (SmartView) candidateView;
+          if (smartView.isRedirectView()) {
+             return candidateView;
+          }
+       }
+    }
+    for (MediaType mediaType : requestedMediaTypes) {
+       for (View candidateView : candidateViews) {
+          if (StringUtils.hasText(candidateView.getContentType())) {
+             MediaType candidateContentType = MediaType.parseMediaType(candidateView.getContentType());
+             if (mediaType.isCompatibleWith(candidateContentType)) {
+                mediaType = mediaType.removeQualityValue();
+                if (logger.isDebugEnabled()) {
+                   logger.debug("Selected '" + mediaType + "' given " + requestedMediaTypes);
+                }
+                attrs.setAttribute(View.SELECTED_CONTENT_TYPE, mediaType, RequestAttributes.SCOPE_REQUEST);
+                return candidateView;
+             }
+          }
+       }
+    }
+    return null;
+}
+```
+
+2.3 判断返回的bestView是否不为空，如果不为空则返回。
+
+```java
+if (bestView != null) {
+          return bestView;
+       }
+    }
+
+```
+
+3.判断返回的view如果不为空就返回这个view
+
+```java
+if (view != null) {
+             return view;
+          }
+```
+
+回到render方法
+
+- 得到view后，由这个view调用它的render方法
+
+  ```java
+  try {
+      if (mv.getStatus() != null) {
+         request.setAttribute(View.RESPONSE_STATUS_ATTRIBUTE, mv.getStatus());
+         response.setStatus(mv.getStatus().value());
+      }
+      view.render(mv.getModelInternal(), request, response);
+  }
+  ```
+
+进入这个render方法中，查看是如何渲染的.
+
+1.这个render方法内部调用renderFragment方法
+
+```java
+public void render(Map<String, ?> model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+    this.renderFragment(this.markupSelectors, model, request, response);
+}
+```
+
+进入到renderFragment方法内部查看是如何渲染的。
+
+1.1 就是把整个html页面给write出去
+
+**视图解析：**
+
+- - **返回值以 forward: 开始：获得的·view就是 new InternalResourceView(forwardUrl); -->  render就是转发****request.getRequestDispatcher(path).forward(request, response);** 
+  - **返回值以** **redirect: 开始：** 获得的view就是**new RedirectView() --》 render就是重定向** 
+  - **返回值是普通字符串：获得的view就是 new ThymeleafView（）--->** render就是把整个html写出去。
+
+## 文件上传
+
+原理：
+
+### 1.请求进来先判断是不是文件上传请求，返回一个StandardMultipartHttpServletRequest对象
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    HttpServletRequest processedRequest = request;
+    HandlerExecutionChain mappedHandler = null;
+    boolean multipartRequestParsed = false;
+
+    WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(request);
+
+    try {
+       ModelAndView mv = null;
+       Exception dispatchException = null;
+
+       try {
+          processedRequest = checkMultipart(request);//判断请求是不是文件上传请求
+          multipartRequestParsed = (processedRequest != request);
+
+          // Determine handler for the current request.
+          mappedHandler = getHandler(processedRequest);
+          if (mappedHandler == null) {
+             noHandlerFound(processedRequest, response);
+             return;
+          }
+```
+
+查看如何判断，进入到checkMultipart(request)方法内
+
+#### 1.1 使用文件上传解析器multipartResolver判断请求是不是文件上传请求。
+
+```java
+protected HttpServletRequest checkMultipart(HttpServletRequest request) throws MultipartException {
+    if (this.multipartResolver != null && this.multipartResolver.isMultipart(request)) {
+       if (WebUtils.getNativeRequest(request, MultipartHttpServletRequest.class) != null) {
+          if (DispatcherType.REQUEST.equals(request.getDispatcherType())) {
+             logger.trace("Request already resolved to MultipartHttpServletRequest, e.g. by MultipartFilter");
+          }
+       }
+       else if (hasMultipartException(request)) {
+          logger.debug("Multipart resolution previously failed for current request - " +
+                "skipping re-resolution for undisturbed error rendering");
+       }
+       else {
+          try {
+             return this.multipartResolver.resolveMultipart(request);
+          }
+          catch (MultipartException ex) {
+             if (request.getAttribute(WebUtils.ERROR_EXCEPTION_ATTRIBUTE) != null) {
+                logger.debug("Multipart resolution failed for error dispatch", ex);
+                // Keep processing error dispatch with regular request handle below
+             }
+             else {
+                throw ex;
+             }
+          }
+       }
+    }
+    // If not returned before: return original request.
+    return request;
+}
+```
+
+进入到this.multipartResolver.isMultipart(request)方法内查看文件上传解析器是如何判断的。
+
+- 文件上传解析器的isMultipart(request方法内部通过判断请求内容类型是不是multipart/，如果是则返回true，请求是文件上传请求
+
+- ```java
+  @Override
+  public boolean isMultipart(HttpServletRequest request) {
+      return StringUtils.startsWithIgnoreCase(request.getContentType(),
+            (this.strictServletCompliance ? MediaType.MULTIPART_FORM_DATA_VALUE : "multipart/"));
+  }
+  
+  
+  	@Override
+  	public MultipartHttpServletRequest resolveMultipart(HttpServletRequest request) throws MultipartException {
+  		return new StandardMultipartHttpServletRequest(request, this.resolveLazily);
+  	}
+  ```
+
+### 1.2 判断是文件上传请求后，文件上传解析器就对请求进行解析最终返回一个StandardMultipartHttpServletRequest对象
+
+```java
+protected HttpServletRequest checkMultipart(HttpServletRequest request) throws MultipartException 
+try {
+             return this.multipartResolver.resolveMultipart(request);
+          }
+          catch (MultipartException ex) {
+             if (request.getAttribute(WebUtils.ERROR_EXCEPTION_ATTRIBUTE) != null) {
+                logger.debug("Multipart resolution failed for error dispatch", ex);
+                // Keep processing error dispatch with regular request handle below
+             }
+             else {
+                throw ex;
+             }
+          }
+       }
+    }
+    // If not returned before: return original request.
+    return request;
+}
+```
+
+进入到resolveMultipart(request)方法中查看具体如何解析
+
+- resolveMultipart(request)方法直接把请求封装成一个StandardMultipartHttpServletRequest对象返回。
+
+- ```java
+  @Override
+  public MultipartHttpServletRequest resolveMultipart(HttpServletRequest request) throws MultipartException {
+      return new StandardMultipartHttpServletRequest(request, this.resolveLazily);
+  }
+  ```
+
+## 
+
+### 
+
+### 2 执行handler方法
+
+```java
+mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+```
+
+#### 2.1 执行handleInternal方法。
+
+```java
+@Override
+@Nullable
+public final ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler)
+       throws Exception {
+
+    return handleInternal(request, response, (HandlerMethod) handler);
+}
+```
+
+- 执行invokeHandlerMethod方法
+
+- ```java
+  @Override
+  protected ModelAndView handleInternal(HttpServletRequest request,
+         HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+  
+     
+      else {
+         // No synchronization on session demanded at all...
+         mav = invokeHandlerMethod(request, response, handlerMethod);
+      }
+  
+      if (!response.containsHeader(HEADER_CACHE_CONTROL)) {
+         if (getSessionAttributesHandler(handlerMethod).hasSessionAttributes()) {
+            applyCacheSeconds(response, this.cacheSecondsForSessionAttributeHandlers);
+         }
+         else {
+            prepareResponse(response);
+         }
+      }
+  
+      return mav;
+  }
+  ```
+
+1.执行invokeAndHandle方法
+
+```java
+@Nullable
+protected ModelAndView invokeHandlerMethod(HttpServletRequest request,
+       HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+
+   
+       invocableMethod.invokeAndHandle(webRequest, mavContainer);
+       if (asyncManager.isConcurrentHandlingStarted()) {
+          return null;
+       }
+
+       return getModelAndView(mavContainer, modelFactory, webRequest);
+    }
+    finally {
+       webRequest.requestCompleted();
+    }
+}
+```
+
+1.1 执行invokeAndHandle方法，真正执行handler方法
+
+```java
+public void invokeAndHandle(ServletWebRequest webRequest, ModelAndViewContainer mavContainer,
+       Object... providedArgs) throws Exception {
+
+    Object returnValue = invokeForRequest(webRequest, mavContainer, providedArgs);
+```
+
+### 文件上传参数解析原理
+
+1.1.1 调用getMethodArgumentValues方法 获取入参args（重点）
+
+```java
+@Nullable
+public Object invokeForRequest(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+       Object... providedArgs) throws Exception {
+
+    Object[] args = getMethodArgumentValues(request, mavContainer, providedArgs);
+    if (logger.isTraceEnabled()) {
+       logger.trace("Arguments: " + Arrays.toString(args));
+    }
+    return doInvoke(args);
+}
+```
+
+- 先判断参数解析器是否支持解析这个参数，如果支持，执行args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);代码
+
+  共有以下这些参数解析器
+
+  ![image-20231004171253437](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231004171253437.png)
+
+- ```java
+  protected Object[] getMethodArgumentValues(NativeWebRequest request, @Nullable ModelAndViewContainer mavContainer,
+         Object... providedArgs) throws Exception {
+  
+      MethodParameter[] parameters = getMethodParameters();//获取控制器方法形参
+      if (ObjectUtils.isEmpty(parameters)) {
+         return EMPTY_ARGS;
+      }
+  
+      Object[] args = new Object[parameters.length];
+      for (int i = 0; i < parameters.length; i++) {
+         MethodParameter parameter = parameters[i];
+         parameter.initParameterNameDiscovery(this.parameterNameDiscoverer);
+         args[i] = findProvidedArgument(parameter, providedArgs);
+         if (args[i] != null) {
+            continue;
+         }
+         if (!this.resolvers.supportsParameter(parameter)) {//先判断参数解析器是否支持解析这个参数
+            throw new IllegalStateException(formatArgumentError(parameter, "No suitable resolver"));
+         }
+         try {
+            args[i] = this.resolvers.resolveArgument(parameter, mavContainer, request, this.dataBinderFactory);
+         }
+         catch (Exception ex) {
+            // Leave stack trace for later, exception may actually be resolved and handled...
+            if (logger.isDebugEnabled()) {
+               String exMsg = ex.getMessage();
+               if (exMsg != null && !exMsg.contains(parameter.getExecutable().toGenericString())) {
+                  logger.debug(formatArgumentError(parameter, exMsg));
+               }
+            }
+            throw ex;
+         }
+      }
+      return args;
+  }
+  ```
+
+（1） resolveArgument方法中首先根据形参选择一个合适的参数解析器
+
+![image-20231004171714386](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231004171714386.png)
+
+```java
+@Nullable
+public Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+       NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+
+    HandlerMethodArgumentResolver resolver = getArgumentResolver(parameter);
+    if (resolver == null) {
+       throw new IllegalArgumentException("Unsupported parameter type [" +
+             parameter.getParameterType().getName() + "]. supportsParameter should be called first.");
+    }
+    return resolver.resolveArgument(parameter, mavContainer, webRequest, binderFactory);
+}
+```
+
+（2）由参数解析器执行resolveArgument方法
+
+（2）.1 执行MultipartResolutionDelegate.resolveMultipartArgument(name, parameter, servletRequest)解析方法，从multipartFiles中取出名字对应的文件，最终返回名字对应的文件。
+
+ getMultipartFiles()得到的是一个map，也就是multipartFiles，**前面参数解析器已经把文件内容封装到了multipartFiles中。**
+
+```java
+protected MultiValueMap<String, MultipartFile> getMultipartFiles() {
+    if (this.multipartFiles == null) {
+       initializeMultipart();
+    }
+    return this.multipartFiles;
+}
+```
+
+```java
+@Nullable
+public static Object resolveMultipartArgument(String name, MethodParameter parameter, HttpServletRequest request)
+       throws Exception {
+
+    MultipartHttpServletRequest multipartRequest =
+          WebUtils.getNativeRequest(request, MultipartHttpServletRequest.class);
+    boolean isMultipart = (multipartRequest != null || isMultipartContent(request));
+
+    if (MultipartFile.class == parameter.getNestedParameterType()) {
+       if (!isMultipart) {
+          return null;
+       }
+       if (multipartRequest == null) {
+          multipartRequest = new StandardMultipartHttpServletRequest(request);
+       }
+       return multipartRequest.getFile(name);
+    }
+    
+    
+    @Override
+	public MultipartFile getFile(String name) {
+		return getMultipartFiles().getFirst(name);
+	}
+
+```
+
+```java
+@Override
+@Nullable
+public Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+       NativeWebRequest request, @Nullable WebDataBinderFactory binderFactory) throws Exception {
+
+    HttpServletRequest servletRequest = request.getNativeRequest(HttpServletRequest.class);
+    Assert.state(servletRequest != null, "No HttpServletRequest");
+
+    RequestPart requestPart = parameter.getParameterAnnotation(RequestPart.class);//得到注解相关信息
+    boolean isRequired = ((requestPart == null || requestPart.required()) && !parameter.isOptional());
+
+    String name = getPartName(parameter, requestPart);//获取形参名字
+    parameter = parameter.nestedIfOptional();
+    Object arg = null;
+
+    Object mpArg = MultipartResolutionDelegate.resolveMultipartArgument(name, parameter, servletRequest);//由文件解析器代理执行解析方法得到入参mparg
+    if (mpArg != MultipartResolutionDelegate.UNRESOLVABLE) {
+       arg = mpArg;
+    }
+    else {
+       try {
+          HttpInputMessage inputMessage = new RequestPartServletServerHttpRequest(servletRequest, name);
+          arg = readWithMessageConverters(inputMessage, parameter, parameter.getNestedGenericParameterType());
+          if (binderFactory != null) {
+             WebDataBinder binder = binderFactory.createBinder(request, arg, name);
+             if (arg != null) {
+                validateIfApplicable(binder, parameter);
+                if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+                   throw new MethodArgumentNotValidException(parameter, binder.getBindingResult());
+                }
+             }
+             if (mavContainer != null) {
+                mavContainer.addAttribute(BindingResult.MODEL_KEY_PREFIX + name, binder.getBindingResult());
+             }
+          }
+       }
+       catch (MissingServletRequestPartException | MultipartException ex) {
+          if (isRequired) {
+             throw ex;
+          }
+       }
+    }
+
+    if (arg == null && isRequired) {
+       if (!MultipartResolutionDelegate.isMultipartRequest(servletRequest)) {
+          throw new MultipartException("Current request is not a multipart request");
+       }
+       else {
+          throw new MissingServletRequestPartException(name);
+       }
+    }
+    return adaptArgumentIfNecessary(arg, parameter);
+}
+```
+
+
+
+1.1.2 执行doInvoke(args);方法执行控制器方法。
+
+异常处理自动配置
+
+1.异常处理相关的自动配置都在ErrorMvcAutoConfiguration
+
+- 往容器中添加了DefaultErrorAttributes组件
+
+  ![image-20231006125743626](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006125743626.png)
+
+- 往容器中添加了basicErrorController组件，BasicErrorController用来处理错误的请求
+
+  ![image-20231006130129033](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006130129033.png)
+
+  - 这个controller绑定了配置文件，可以通过在配置文件中修改server.error.path来修改controller处理请求的路径
+
+    ![image-20231006130322685](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006130322685.png)
+
+  - 根据不同的客户端相应不同的数据（白页或json  通过内容协商确定返回什么）
+
+    - 当客户端是浏览器时请求会被errorHtml方法处理，返回一个modelandview对象，这个error从容器中拿。（由视图解析器拿）（响应的默认错误处理页）
+
+      ![image-20231006130910994](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006130910994.png)
+
+    - 当客户端是apifox时，请求会被error方法处理，返回json数据。
+
+      ![image-20231006131452645](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006131452645.png)
+
+
+
+- 往容器中添加了errorPageCustomizer自定义错误页组件
+
+  ![image-20231006131956699](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006131956699.png)
+
+- 里面还有一个内部配置类WhitelabelErrorViewConfiguration，关于空白页相关的自动配置
+
+  ![image-20231006132154725](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006132154725.png)
+
+  - 这个配置类往容器中添加了defaultErrorView组件，名字是error，就是上文中当客户端是浏览器时controller返回的error。
+
+    ![image-20231006132333045](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006132333045.png)
+
+  - 往容器中添加了beanNameViewResolver组件，这个组件作用就是帮助controller以返回的view名字即error为id到容器中查找组件。
+
+    ![image-20231006132738564](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006132738564.png)
+
+    
+
+- 里面还有一个内部配置类DefaultErrorViewResolverConfiguration，和以http状态码响应view有关的自动配置。
+
+  ![image-20231006134046013](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006134046013.png)
+
+  - 往容器中添加了DefaultErrorViewResolver组件。
+
+    ![image-20231006134152368](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006134152368.png)
+
+    - ![image-20231006134228392](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006134228392.png)
+
+    - 以http状态码为地址来寻找错误页面并响应。
+
+      ![image-20231006134417801](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231006134417801.png)
+
+  
+
+异常处理流程
+
+- 首先执行handler方法，此时的请求为/user，handler为自己定义的controller
+
+  ![image-20231007132301586](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007132301586.png)
+
+- 执行方法过程中有异常，所以得到的mv为null，且异常被捕获并交给dispatchException。而且标志当前请求结束。
+
+  ![image-20231007132508618](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007132508618.png)
+
+![image-20231007132546756](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007132546756.png)
+
+- 然后执行processDispatchResult解析错误视图、处理异常。
+
+  ```java
+  processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+  ```
+
+  - 执行processHandlerException方法处理异常，并得到mv。
+
+    ![image-20231007133038452](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007133038452.png)
+
+    处理异常解析器共有四个
+
+    ![image-20231007133618951](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007133618951.png)
+
+    - 遍历handlerExceptionResolvers处理异常解析器，用解析器解析异常。如果返回的mv不为空说明解析成功，退出循环。如果返回的mv都为null，则抛出个异常ex
+
+      ![image-20231007134607491](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007134607491.png)
+
+      ![image-20231007133351305](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007133351305.png)
+
+      - 首先DefaultErrorAttributes  把异常信息添加到request域中，然后返回空的mv。
+
+        - ![image-20231007133906678](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007133906678.png)
+
+        ![image-20231007133938594](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007133938594.png)
+
+      - 其他三个解析器也无法解析异常都返回null。
+
+        
+
+- 异常被捕获，并转发到/error请求
+
+  ![image-20231007134654814](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007134654814.png)
+
+- 此时请求为/error，handler为BasicErrorController，handler方法为errorHtml。
+
+  ![image-20231007134853726](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007134853726.png)
+
+- 执行控制器方法
+
+  ![image-20231007135004189](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007135004189.png)
+
+  ![image-20231007135617500](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007135617500.png)
+
+  - 获得请求状态码，并设置respose的状态码，然后执行解析错误视图方法。resolveErrorView
+
+    错误视图解析器只有一个DefaultErrorViewResolver
+
+    ![image-20231007140145346](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007140145346.png)
+
+    - **遍历errorViewResolvers错误视图解析器，然后解析器DefaultErrorViewResolve执行解析。**
+
+      ![image-20231007135843242](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007135843242.png)
+
+      - ![image-20231007140300346](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007140300346.png)
+
+      
+
+      - 调用resolve(String.valueOf(status.value()), model)方法，String.valueOf(status.value())是状态码500。
+
+      - **是把响应状态码作为错误页的地址，error/500.html** 。
+
+        ![image-20231007140706570](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007140706570.png)
+
+        
+
+      ![image-20231007140721993](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007140721993.png)
+
+  最终返回的mv就是error/500.html** 。
+
+  ![image-20231007140939927](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007140939927.png)
+
+**注：DefaultErrorViewResolve解析首先进行精确解析，有精确的错误状态码页面就匹配精确，没有就找 4xx.html；如果都没有就触发白页。**
+
+![image-20231007140300346](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007140300346.png)
+
+定制错误处理逻辑
+
+- 自定义错误页 把4xx 5xx 放在error文件夹下
+
+  ![image-20231007204331229](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007204331229.png)
+
+当/error请求进来，会被basicErrorController处理以状态码为地址的一部分来访问静态资源作为view，最终返回mv，有精确的错误状态码页面就匹配精确，没有就找 4xx.html；如果都没有就触发白页
+
+- @ControllerAdvice+@ExceptionHandler处理全局异常，底层**ExceptionHandlerExceptionResolver 支持的**。它解析异常底层最终会调用我们自定义的处理异常方法。（常用）
+
+  ![image-20231007210029382](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007210029382.png)
+
+  ```java
+  package com.hbw.boot.exception;
+  
+  import lombok.extern.slf4j.Slf4j;
+  import org.springframework.web.bind.annotation.ControllerAdvice;
+  import org.springframework.web.bind.annotation.ExceptionHandler;
+  
+  @Slf4j
+  @ControllerAdvice
+  public class GlobalExceptionHandler {
+      @ExceptionHandler({NullPointerException.class, ArithmeticException.class})
+      public String handleException(Exception e) {
+          log.info("异常为：{}" + e);
+          return "customException";
+  
+      }
+  }
+  
+  ```
+
+- @ResponseStatus+自定义异常 ；底层是 **ResponseStatusExceptionResolver**支持
+
+但 **ResponseStatusExceptionResolver**解析异常**只是获取异常状态码和reason，并不是处理异常。获取完状态码之后，调用response.sendError，转发到/error请求，还是由basicErrorController处理异常。**然后返回new ModelAndView()。用来结束对异常解析器的遍历。
+
+
+
+```java
+package com.hbw.boot.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+@ResponseStatus(value = HttpStatus.BAD_GATEWAY,reason = "您不满18周岁")
+public class NotYetYearsOldException extends RuntimeException{
+    public NotYetYearsOldException() {
+    }
+
+    public NotYetYearsOldException(String message) {
+        super(message);
+    }
+```
+
+```java
+@RequestMapping(value = "/user",method = RequestMethod.PUT )
+public String user(Pet pet, Model model){
+    model.addAttribute("pet",pet);
+    int i = 10/0;
+    if (pet.getAge()<18){
+        throw new NotYetYearsOldException();
+    }
+    return "redirect:success";
+
+
+}
+```
+
+![image-20231007211515419](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007211515419.png)
+
+![image-20231007211558299](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007211558299.png)
+
+![](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007211747360.png)
+
+- 自定义异常解析器实现 HandlerExceptionResolver 处理异常；可以作为默认的全局异常处理规则。
+
+  ```java
+  @Component
+  @Order(Ordered.HIGHEST_PRECEDENCE)//设置优先级，优先级value值越小，表示优先级越高
+  public class CustomExceptionResolver implements HandlerExceptionResolver {
+      @Override
+      public ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+  
+          try {
+              response.sendError(522,"错了");
+          } catch (IOException e) {
+              throw new RuntimeException(e);
+          }
+          return new ModelAndView();
+      }
+  }
+  ```
+
+这次遍历异常解析器就会有自定义的异常解析器
+
+![image-20231007212326186](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231007212326186.png)
+
+- Spring底层的异常，如 参数类型转换异常；**DefaultHandlerExceptionResolver 处理框架底层的异常。**
+  - 底层也是response.sendError。然后返回一个mv对象
+
+![image-20231008104526136](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231008104526136.png)
+
+- **ErrorViewResolver**  实现自定义处理异常；（一般不用）
+
+- - response.sendError 。error请求就会转给controller
+  - 你的异常没有任何人能处理。tomcat底层 response.sendError。error请求就会转给controller
+  - **basicErrorController 要去的页面地址是** **ErrorViewResolver**  ；
+
+# 11、定制化原理
+
+## 1、定制化的常见方式 
+
+- 修改配置文件；
+- **xxxxxCustomizer；**
+- **编写自定义的配置类   xxxConfiguration；+** **@Bean替换、增加容器中默认组件；视图解析器** 
+- **Web应用 编写一个配置类实现** **WebMvcConfigurer 即可定制化web功能；+ @Bean给容器中再扩展一些组件**
+
+```java
+@Configuration
+public class AdminWebConfig implements WebMvcConfigurer
+```
+
+- @EnableWebMvc + WebMvcConfigurer —— @Bean  **可以全面接管SpringMVC，所有规则全部自己重新配置； 实现定制和扩展功能**
+- 为什么@EnableWebMvc会让springmvc自动配置失效？
+
+- - 原理
+  - 1、WebMvcAutoConfiguration  默认的SpringMVC的自动配置功能类。静态资源、欢迎页.....
+  - 2、一旦使用 @EnableWebMvc 、。会 @Import(DelegatingWebMvcConfiguration.**class**)
+  - 3、**DelegatingWebMvcConfiguration** 的 作用，只保证SpringMVC最基本的使用
+
+- - - 把所有系统中的 WebMvcConfigurer 拿过来。所有功能的定制都是这些 WebMvcConfigurer  合起来一起生效
+    - 自动配置了一些非常底层的组件。**RequestMappingHandlerMapping**、这些组件依赖的组件都是从容器中获取
+    - **public class** DelegatingWebMvcConfiguration **extends** **WebMvcConfigurationSupport**
+
+- - 4、**WebMvcAutoConfiguration** 里面的配置要能生效 必须  @ConditionalOnMissingBean(**WebMvcConfigurationSupport**.**class**)
+  - 5、@EnableWebMvc  导致了 **WebMvcAutoConfiguration  没有生效。**
+
+- ... ...
+
+
+
+## 2、原理分析套路
+
+**场景starter** **- xxxxAutoConfiguration - 导入xxx组件 - 绑定xxxProperties --** **绑定配置文件项** 
+
+# 05 数据访问
+
+1.导入jdbc 的starter
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+```
+
+![image-20231008205937177](C:\Users\Lenovo\AppData\Roaming\Typora\typora-user-images\image-20231008205937177.png)
+
+2.导入数据库驱动依赖
+
+```xml
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>5.1.49</version>
+</dependency>
+```
+
+分析自动配置
 
